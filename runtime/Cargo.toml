@@ -12,6 +12,11 @@ repository = 'https://github.com/substrate-developer-hub/substrate-node-template
 [package.metadata.docs.rs]
 targets = ['x86_64-unknown-linux-gnu']
 
+[dependencies.pallet-bo-trading]
+default-features = false
+path = '../pallets/BoTrading'
+version = '4.0.0-dev'
+
 [dependencies.pallet-template]
 default-features = false
 path = '../pallets/template'
@@ -211,6 +216,7 @@ std = [
     'frame-system/std',
     'pallet-aura/std',
     'pallet-balances/std',
+	'pallet-bo-trading/std',
     'pallet-grandpa/std',
     'pallet-randomness-collective-flip/std',
     'pallet-sudo/std',
