@@ -37,6 +37,10 @@ git = 'https://github.com/paritytech/substrate.git'
 tag = 'devhub/latest'
 version = '4.0.0-dev'
 
+[dependencies.log]
+default-features = false
+version = '0.4.14'
+
 [dependencies.scale-info]
 default-features = false
 features = ['derive']
@@ -46,13 +50,17 @@ version = '1.0'
 features = ["derive"]
 version = "1.0"
 
-[dev-dependencies.sp-core]
+[dependencies.sp-io]
 default-features = false
 git = 'https://github.com/paritytech/substrate.git'
 tag = 'devhub/latest'
 version = '4.0.0-dev'
 
-[dev-dependencies.sp-io]
+
+
+
+
+[dev-dependencies.sp-core]
 default-features = false
 git = 'https://github.com/paritytech/substrate.git'
 tag = 'devhub/latest'
