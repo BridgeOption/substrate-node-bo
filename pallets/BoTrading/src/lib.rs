@@ -88,8 +88,16 @@ pub mod pallet {
 		pub currency_pair: CurrencyPair,
 		pub trade_type: TradeType,
 		// TODO: Ask: scale_info::TypeInfo do not support float,
-		// So What is the best approach to save a float (eg: trading volume) inside db? u64? BalanceOf?
+		// So What is the best approach to working with float data (eg: trading volume) when we wanna store it on-chain? (use u64, use Balances pallet, etc)
 		/// trading volume in unit of the stable coin
+		///
+		/// For example: User buy 0.01 XXX token => trading volume is 0.01
+		/// Can I use pallet balance to store trading volume like the bellow code?
+		/// impl pallet_bo_trading::Config for Runtime {
+		/// 	type Event = Event;
+		/// 	type Currency = Balances; // pallet balance
+		/// }
+		/// type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 		pub volume_in_unit: BalanceOf<T>,
 		pub expired_at: u64,
 		pub created_at: u64,
@@ -281,6 +289,7 @@ pub mod pallet {
 			};
 
 			// TODO: Ask: Is this too complex? How can we improve this?
+			// TODO: switch to randomize id because hashing this way do not ensure uniqueness
 			let order_id = T::Hashing::hash_of(&order);
 			order.id = order_id;
 
