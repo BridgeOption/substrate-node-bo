@@ -281,6 +281,7 @@ impl pallet_sudo::Config for Runtime {
 impl pallet_bo_trading::Config for Runtime {
 	type Event = Event;
 	type Currency = Balances; // TODO: Ask: What is this?
+	type BoLiquidity = BoLiquidityModule;
 }
 
 impl pallet_bo_liquidity::Config for Runtime {

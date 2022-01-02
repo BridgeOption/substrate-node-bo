@@ -119,7 +119,19 @@ pub mod pallet {
 
 	/// Internal helpers fn
 	impl<T: Config> Pallet<T> {
-
+		fn pick_a_suitable_lp() -> Option<u32> {
+			Some(99999)
+		}
 	}
 
+	// for using in other pallet
+	pub trait BoLiquidityInterface{
+		fn get_suitable_lp()->Option<u32>;
+	}
+	// impl<T: Config> BoLiquidityInterface for Module<T> {
+	impl<T: Config> BoLiquidityInterface for Pallet<T> { // use Pallet<T> instead of Module<T> to support calling in other impl of Pallet, but get error  |Trait|^^^^^ not found in this scope
+		fn get_suitable_lp()->Option<u32>{
+			Self::pick_a_suitable_lp()
+		}
+	}
 }

@@ -36,6 +36,7 @@ pub mod pallet {
 
 	#[cfg(feature = "std")]
 	use frame_support::serde::{Deserialize, Serialize};
+	use pallet_bo_liquidity::BoLiquidityInterface;
 
 
 
@@ -49,6 +50,8 @@ pub mod pallet {
 
 		/// The Currency handler for the BoTrading pallet.
 		type Currency: Currency<Self::AccountId>;
+
+		type BoLiquidity: BoLiquidityInterface;
 	}
 
 	#[pallet::pallet]
@@ -214,6 +217,8 @@ pub mod pallet {
 
 			// Update storage.
 			<Something<T>>::put(something);
+
+			let lp = T::BoLiquidity::get_suitable_lp();
 
 			// Emit an event.
 			Self::deposit_event(Event::SomethingStored(something, who));
