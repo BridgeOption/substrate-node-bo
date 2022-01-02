@@ -3535,6 +3535,7 @@ dependencies = [
  "hex-literal",
  "pallet-aura",
  "pallet-balances",
+ "pallet-bo-liquidity",
  "pallet-bo-trading",
  "pallet-grandpa",
  "pallet-randomness-collective-flip",
@@ -3765,6 +3766,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-bo-liquidity"
+version = "4.0.0-dev"
+dependencies = [
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "log",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+]
+
+[[package]]
 name = "pallet-bo-trading"
 version = "4.0.0-dev"
 dependencies = [
@@ -3772,6 +3789,7 @@ dependencies = [
  "frame-support",
  "frame-system",
  "log",
+ "pallet-bo-liquidity",
  "parity-scale-codec",
  "scale-info",
  "serde",

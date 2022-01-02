@@ -42,6 +42,7 @@ pub use sp_runtime::{Perbill, Permill};
 
 /// Import the BoTrading pallet.
 pub use pallet_bo_trading;
+pub use pallet_bo_liquidity;
 
 /// Import the template pallet.
 pub use pallet_template;
@@ -282,6 +283,11 @@ impl pallet_bo_trading::Config for Runtime {
 	type Currency = Balances; // TODO: Ask: What is this?
 }
 
+impl pallet_bo_liquidity::Config for Runtime {
+	type Event = Event;
+	type Currency = Balances;
+}
+
 /// Configure the pallet-template in pallets/template.
 impl pallet_template::Config for Runtime {
 	type Event = Event;
@@ -305,6 +311,7 @@ construct_runtime!(
 		// Include the custom logic from the pallet-template in the runtime.
 		TemplateModule: pallet_template,
 		BoTradingModule: pallet_bo_trading,
+		BoLiquidityModule: pallet_bo_liquidity,
 	}
 );
 

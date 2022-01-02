@@ -12,6 +12,11 @@ repository = 'https://github.com/substrate-developer-hub/substrate-node-template
 [package.metadata.docs.rs]
 targets = ['x86_64-unknown-linux-gnu']
 
+[dependencies.pallet-bo-liquidity]
+default-features = false
+path = '../pallets/BoLiquidity'
+version = '4.0.0-dev'
+
 [dependencies.pallet-bo-trading]
 default-features = false
 path = '../pallets/BoTrading'
@@ -217,6 +222,7 @@ std = [
     'pallet-aura/std',
     'pallet-balances/std',
 	'pallet-bo-trading/std',
+	'pallet-bo-liquidity/std',
     'pallet-grandpa/std',
     'pallet-randomness-collective-flip/std',
     'pallet-sudo/std',
