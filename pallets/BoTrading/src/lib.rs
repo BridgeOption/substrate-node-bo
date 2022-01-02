@@ -78,6 +78,22 @@ pub mod pallet {
 		BtcEth,
 	}
 
+	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo)]
+	#[scale_info(skip_type_params(T))]
+	#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+	pub enum OrderStatus {
+		// Pending, // Is for frontend or other service only
+		/// The order was created on the chain, and is being scheduled for checking result
+		Created,
+		/// The order expired_at was reach, it mean this is the time for checking order result, if it win or lose
+		/// Normally Created will be changed to Win/Lose if all the operation was fast enough
+		/// But in reality, we need to get the price from oracle, then check if it win or lose might take time, so we must use this Expired status
+		Checking,
+		/// Completed = Win / Lose
+		Win,
+		Lose,
+	}
+
 
 	/// Struct for holding Order information.
 	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo)]
@@ -102,6 +118,7 @@ pub mod pallet {
 		pub expired_at: u64,
 		pub created_at: u64,
 		pub liquidity_pool_id: T::Hash,
+		pub status: OrderStatus,
 	}
 
 
@@ -286,6 +303,7 @@ pub mod pallet {
 				expired_at,
 				created_at: current_ts,
 				liquidity_pool_id: suitable_lp_id,
+				status: OrderStatus::Created,
 			};
 
 			// TODO: Ask: Is this too complex? How can we improve this?
