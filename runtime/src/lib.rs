@@ -282,11 +282,13 @@ impl pallet_bo_trading::Config for Runtime {
 	type Event = Event;
 	type Currency = Balances; // TODO: Ask: What is this?
 	type BoLiquidity = BoLiquidityModule;
+	type MyRandomness = RandomnessCollectiveFlip;
 }
 
 impl pallet_bo_liquidity::Config for Runtime {
 	type Event = Event;
 	type Currency = Balances;
+	type MyRandomness = RandomnessCollectiveFlip;
 }
 
 /// Configure the pallet-template in pallets/template.

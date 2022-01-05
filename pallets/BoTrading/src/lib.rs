@@ -26,12 +26,12 @@ pub mod pallet {
 		pallet_prelude::*,
 		sp_runtime::traits::Hash, // support T::Hashing
 		traits::{
-			// Randomness,
+			Randomness,
 			Currency,
 		},
 	};
 	use scale_info::TypeInfo;
-	use scale_info::prelude::string::String; // support String
+	// use scale_info::prelude::string::String; // support String
 	use scale_info::prelude::vec::Vec;	// support Vec
 
 	#[cfg(feature = "std")]
@@ -51,7 +51,11 @@ pub mod pallet {
 		/// The Currency handler for the BoTrading pallet.
 		type Currency: Currency<Self::AccountId>;
 
-		type BoLiquidity: BoLiquidityInterface;
+		/// Loose coupling with BoLiquidity pallet
+		type BoLiquidity: BoLiquidityInterface<Self::Hash>;
+
+		/// Use for create random data
+		type MyRandomness: Randomness<Self::Hash, Self::BlockNumber>;
 	}
 
 	#[pallet::pallet]
@@ -292,22 +296,20 @@ pub mod pallet {
 
 			// TODO: Ensure: Allow a specific currency only!
 
-			let na_str = String::from("N/A").as_bytes().to_vec();
-
-			// get pool
-			let suitable_lp_id = T::Hashing::hash_of(&na_str);
-
+			// select a pool id for this order
+			let suitable_lp_id = T::BoLiquidity::get_suitable_lp();
+			ensure!(suitable_lp_id.is_some(), <Error<T>>::NoLiquidityPool);
 
 			// create orders
 			let mut order = Order::<T> {
-				id: T::Hashing::hash_of(&na_str),
+				id: T::Hashing::hash_of(&b"N/A"),
 				user_id: sender.clone(),
 				currency_pair,
 				trade_type,
 				volume_in_unit,
 				expired_at,
 				created_at: current_ts,
-				liquidity_pool_id: suitable_lp_id,
+				liquidity_pool_id: suitable_lp_id.unwrap(), // unwrap is safe because of `ensure` check above
 				status: OrderStatus::Created,
 			};
 
