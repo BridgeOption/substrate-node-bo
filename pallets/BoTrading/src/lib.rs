@@ -251,6 +251,9 @@ pub mod pallet {
 
 
 		/// Create an order
+		///  - volume_in_unit: 2 decimal place, eg: 1000 mean 10.00
+		///  - expired_at: unix timestamp
+		///
 		/// TODO: do benchmark to get this weight
 		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
 		pub fn place_order(
@@ -270,13 +273,13 @@ pub mod pallet {
 
 			// ----- validation ------
 			// TODO: Ask: how can I get decimal of currency, ie: 1 coin = 100...000 units
-			let CURRENCY_DECIMAL = 18;
+			let CURRENCY_DECIMAL = 2;
 			// TODO: Get this setting from LiquidityPool setting
 			let MIN_TRADING_VOL = 1; // min trading vol is 1 token = (~$1)
 			let MAX_TRADING_VOL = 1000; // max trading vol is 1000 token (~$1000)
 
-			let min_vol_in_unit: BalanceOf<T> = Self::u64_to_balance(MIN_TRADING_VOL * CURRENCY_DECIMAL).ok_or(<Error<T>>::InvalidTradingVolume)?;
-			let max_vol_in_unit: BalanceOf<T> = Self::u64_to_balance(MAX_TRADING_VOL * CURRENCY_DECIMAL).ok_or(<Error<T>>::InvalidTradingVolume)?;
+			let min_vol_in_unit: BalanceOf<T> = Self::u64_to_balance(MIN_TRADING_VOL * 10_u64.pow(CURRENCY_DECIMAL)).ok_or(<Error<T>>::InvalidTradingVolume)?;
+			let max_vol_in_unit: BalanceOf<T> = Self::u64_to_balance(MAX_TRADING_VOL * 10_u64.pow(CURRENCY_DECIMAL)).ok_or(<Error<T>>::InvalidTradingVolume)?;
 
 			ensure!(min_vol_in_unit.le(&volume_in_unit), <Error<T>>::InvalidTradingVolume);
 			ensure!(max_vol_in_unit.ge(&volume_in_unit), <Error<T>>::InvalidTradingVolume);
