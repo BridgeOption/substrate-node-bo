@@ -3556,6 +3556,7 @@ dependencies = [
  "frame-support",
  "frame-system",
  "log",
+ "pallet-bo-liquidity",
  "parity-scale-codec",
  "scale-info",
  "serde",
