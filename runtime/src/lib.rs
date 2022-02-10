@@ -40,12 +40,12 @@ use pallet_transaction_payment::CurrencyAdapter;
 pub use sp_runtime::BuildStorage;
 pub use sp_runtime::{Perbill, Permill};
 
+/// Import the template pallet.
+pub use pallet_template;
+
 /// Import the BoTrading pallet.
 pub use pallet_bo_trading;
 pub use pallet_bo_liquidity;
-
-/// Import the template pallet.
-pub use pallet_template;
 
 /// An index to a block.
 pub type BlockNumber = u32;
@@ -278,6 +278,11 @@ impl pallet_sudo::Config for Runtime {
 	type Call = Call;
 }
 
+/// Configure the pallet-template in pallets/template.
+impl pallet_template::Config for Runtime {
+	type Event = Event;
+}
+
 impl pallet_bo_trading::Config for Runtime {
 	type Event = Event;
 	type Currency = Balances; // TODO: Ask: What is this?
@@ -289,11 +294,6 @@ impl pallet_bo_liquidity::Config for Runtime {
 	type Event = Event;
 	type Currency = Balances;
 	type MyRandomness = RandomnessCollectiveFlip;
-}
-
-/// Configure the pallet-template in pallets/template.
-impl pallet_template::Config for Runtime {
-	type Event = Event;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
