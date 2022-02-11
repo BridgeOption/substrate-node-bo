@@ -170,7 +170,6 @@ pub mod pallet {
 			// Check if the kitty does not already exist in our storage map
 			ensure!(Self::liquidity_pools(&lp_id) == None, <Error<T>>::LPNotExist);
 
-			// <LiquidityPoolsIndex<T>>::insert(<LpCount<T>>::get(), lp_id);
 			<LiquidityPools<T>>::insert(lp_id, liquidity_pool);
 			<LpCount<T>>::put(new_cnt);
 			<LiquidityPoolsOwned<T>>::append(sender.clone(), lp_id);
@@ -227,7 +226,6 @@ pub mod pallet {
 			let mut random_number = Self::generate_random_number(0);
 	
 			// Best effort attempt to remove bias from modulus operator.
-			// for i in 1..T::MaxGenerateRandom::get() {
 			for i in 1..<LpCount<T>>::get() {
 				if random_number < u32::MAX - u32::MAX % total {
 					break
@@ -241,10 +239,8 @@ pub mod pallet {
 
 		/// Generate a random number from a given seed.
 		fn generate_random_number(seed: u32) -> u32 {
-			// let (random_seed, _) = T::MyRandomness::random(&(T::PalletId::get(), seed).encode());
 			let (random_seed, _) = T::MyRandomness::random(&("bo_liquidity", seed).encode());
 
-			// let rnd_str = T::PoeRandomness::random(&b"my_seed"[..]).0;
 			let random_number = <u32>::decode(&mut random_seed.as_ref())
 				.expect("secure hashes should always be bigger than u32; qed");
 			random_number
