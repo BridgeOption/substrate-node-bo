@@ -90,7 +90,7 @@ pub mod pallet {
 
 	#[pallet::storage]
 	#[pallet::getter(fn lp_count)]
-	pub type LpCount<T> = StorageValue<_, u64, ValueQuery>;
+	pub type LpCount<T> = StorageValue<_, u32, ValueQuery>;
 
 	#[pallet::storage]
 	#[pallet::getter(fn liquidity_pools)]
@@ -101,6 +101,10 @@ pub mod pallet {
 	#[pallet::getter(fn liquidity_pools_owned)]
 	/// Keeps track of what accounts own what LP.
 	pub(super) type LiquidityPoolsOwned<T: Config> = StorageMap<_, Twox64Concat, T::AccountId, Vec<T::Hash>, ValueQuery>;
+
+	#[pallet::storage]
+	#[pallet::getter(fn liquidity_pools_index)]
+	pub(crate) type LiquidityPoolsIndex<T: Config> = StorageMap<_, Twox64Concat, u32, T::Hash, OptionQuery>;
 
 	// TODO: Multi-sig for this pool
 
@@ -119,6 +123,7 @@ pub mod pallet {
 		/// The order was created
 		/// parameters. [sender, lp_id]
 		LPCreated(T::AccountId, T::Hash),
+		LPGetRandom(T::AccountId, T::Hash),
 	}
 
 	// Errors inform users that something went wrong.
@@ -165,14 +170,32 @@ pub mod pallet {
 			// Check if the kitty does not already exist in our storage map
 			ensure!(Self::liquidity_pools(&lp_id) == None, <Error<T>>::LPNotExist);
 
+			// <LiquidityPoolsIndex<T>>::insert(<LpCount<T>>::get(), lp_id);
 			<LiquidityPools<T>>::insert(lp_id, liquidity_pool);
 			<LpCount<T>>::put(new_cnt);
 			<LiquidityPoolsOwned<T>>::append(sender.clone(), lp_id);
+
+			let prev_cnt = new_cnt - 1;
+			<LiquidityPoolsIndex<T>>::insert(prev_cnt, lp_id);
+
 
 			let lp_rank = Self::get_lprank(amount);
 			<LpItemsRank<T>>::append(lp_rank, lp_id);
 
 			Self::deposit_event(Event::LPCreated(sender, lp_id));
+
+			Ok(())
+		}
+
+		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
+		pub fn get_lp(origin: OriginFor<T>) -> DispatchResult {
+			let sender = ensure_signed(origin)?;
+
+			let random_lp_id = Self::get_next_lp_id().unwrap();
+
+			log::info!("Random LP: {:?}.", random_lp_id);
+
+			Self::deposit_event(Event::LPGetRandom(sender, random_lp_id));
 
 			Ok(())
 		}
@@ -195,10 +218,45 @@ pub mod pallet {
 			}
 		}
 
+		/// Randomly choose a LP from among the total number of lps.
+		/// Returns `None` if there are no lp.
+		fn choose_lp(total: u32) -> Option<u32> {
+			if total == 0 {
+				return None
+			}
+			let mut random_number = Self::generate_random_number(0);
+	
+			// Best effort attempt to remove bias from modulus operator.
+			// for i in 1..T::MaxGenerateRandom::get() {
+			for i in 1..<LpCount<T>>::get() {
+				if random_number < u32::MAX - u32::MAX % total {
+					break
+				}
+	
+				random_number = Self::generate_random_number(i);
+			}
+	
+			Some(random_number % total)
+		}
+
+		/// Generate a random number from a given seed.
+		fn generate_random_number(seed: u32) -> u32 {
+			// let (random_seed, _) = T::MyRandomness::random(&(T::PalletId::get(), seed).encode());
+			let (random_seed, _) = T::MyRandomness::random(&("bo_liquidity", seed).encode());
+
+			// let rnd_str = T::PoeRandomness::random(&b"my_seed"[..]).0;
+			let random_number = <u32>::decode(&mut random_seed.as_ref())
+				.expect("secure hashes should always be bigger than u32; qed");
+			random_number
+		}
+
 		/// Get a unique hash to use as lp id
-		fn get_next_lp_id() -> T::Hash {
-			// TODO: Use Randomness
-			return T::Hashing::hash_of(b"TODO");
+		fn get_next_lp_id() -> Option<T::Hash> {
+			// Use Randomness
+			match Self::choose_lp(<LpCount<T>>::get()) {
+				None => None,
+				Some(lp) => <LiquidityPoolsIndex<T>>::get(lp),
+			}
 		}
 
 		/*
