@@ -33,9 +33,7 @@ pub mod pallet {
 	#[cfg(feature = "std")]
 	use frame_support::serde::{Deserialize, Serialize};
 
-
-
-
+	type AccountOf<T> = <T as frame_system::Config>::AccountId;
 
 	/// Configure the pallet by specifying the parameters and types on which it depends.
 	#[pallet::config]
@@ -51,12 +49,9 @@ pub mod pallet {
 	}
 
 
-
 	#[pallet::pallet]
 	#[pallet::generate_store(pub(super) trait Store)]
 	pub struct Pallet<T>(_);
-
-
 
 	///
 	/// - Each LP will have size ranking:
@@ -88,9 +83,10 @@ pub mod pallet {
 	#[scale_info(skip_type_params(T))]
 	pub struct LiquidityPool<T: Config> {
 		pub id: T::Hash,
+		pub name: Vec<u8>,
+		pub amount: u64,
+		pub admin: AccountOf<T>,
 	}
-
-
 
 	#[pallet::storage]
 	#[pallet::getter(fn lp_count)]
@@ -98,15 +94,20 @@ pub mod pallet {
 
 	#[pallet::storage]
 	#[pallet::getter(fn liquidity_pools)]
-	/// Stores list of created orders
+	/// Stores list of created lp
 	pub(super) type LiquidityPools<T: Config> = StorageMap<_, Twox64Concat, T::Hash, LiquidityPool<T>>;
+
+	#[pallet::storage]
+	#[pallet::getter(fn liquidity_pools_owned)]
+	/// Keeps track of what accounts own what LP.
+	pub(super) type LiquidityPoolsOwned<T: Config> = StorageMap<_, Twox64Concat, T::AccountId, Vec<T::Hash>, ValueQuery>;
 
 	// TODO: Multi-sig for this pool
 
 
 	#[pallet::storage]
 	#[pallet::getter(fn lp_items_rank)]
-	/// Stores list of created orders
+	/// Stores list of created LP Rank
 	pub(super) type LpItemsRank<T: Config> = StorageMap<_, Twox64Concat, LpRank, Vec<T::Hash>>;
 
 
@@ -125,33 +126,75 @@ pub mod pallet {
 	pub enum Error<T> {
 		/// Error names should be descriptive.
 		NoneValue,
+		/// Handles arithemtic overflow when incrementing the LP counter.
+		LPCntOverflow,
+		/// Handles checking whether the LP exists.
+		LPNotExist,
+		/// Handles checking amount when create LP
+		InvalidAmount,
 	}
-
-
 
 	// Dispatchable functions allows users to interact with the pallet and invoke state changes.
 	// These functions materialize as "extrinsics", which are often compared to transactions.
 	// Dispatchable functions must be annotated with a weight and must return a DispatchResult.
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
+
 		/// An example dispatchable that takes a singles value as a parameter, writes the value to
 		/// storage and emits an event. This function must be dispatched by a signed extrinsic.
 		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
-		pub fn create_lp(origin: OriginFor<T>, _something: u32) -> DispatchResult {
-			let _who = ensure_signed(origin)?;
+		pub fn create_lp(origin: OriginFor<T>, name: Vec<u8>, amount: u64) -> DispatchResult {
+			let sender = ensure_signed(origin)?;
 
-			log::info!("Hello world: {:?}.", "oke");
+			let min_amount:u64 = 10000;
+			ensure!(amount.ge(&min_amount), <Error<T>>::InvalidAmount);
 
-			// Self::deposit_event(Event::LPCreated(something, who));
+			let mut liquidity_pool = LiquidityPool::<T> {
+				id: T::Hashing::hash_of(&b"N/A"),
+				name: name,
+				amount: amount,
+				admin: sender.clone()
+			};
+
+			let lp_id = T::Hashing::hash_of(&liquidity_pool);
+			liquidity_pool.id = lp_id;
+
+			let new_cnt = Self::lp_count().checked_add(1)
+				.ok_or(<Error<T>>::LPCntOverflow)?;
+
+			// Check if the kitty does not already exist in our storage map
+			ensure!(Self::liquidity_pools(&lp_id) == None, <Error<T>>::LPNotExist);
+
+			<LiquidityPools<T>>::insert(lp_id, liquidity_pool);
+			<LpCount<T>>::put(new_cnt);
+			<LiquidityPoolsOwned<T>>::append(sender.clone(), lp_id);
+
+			let lp_rank = Self::get_lprank(amount);
+			<LpItemsRank<T>>::append(lp_rank, lp_id);
+
+			Self::deposit_event(Event::LPCreated(sender, lp_id));
 
 			Ok(())
 		}
+		
 	}
-
 
 
 	/// Internal helpers fn
 	impl<T: Config> Pallet<T> {
+		/// Get LP rank by amount
+		fn get_lprank (amount: u64) -> LpRank {
+			if amount < 10000 {
+				return LpRank::Inactive;
+			} else if amount >= 10000 && amount < 500000 {
+				return LpRank::Tiny;
+			} else if amount >= 500000 {
+				return LpRank::Earth;
+			} else {
+				return LpRank::Inactive;
+			}
+		}
+
 		/// Get a unique hash to use as lp id
 		fn get_next_lp_id() -> T::Hash {
 			// TODO: Use Randomness
