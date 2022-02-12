@@ -114,6 +114,11 @@ pub mod pallet {
 	/// Stores list of created LP Rank
 	pub(super) type LpItemsRank<T: Config> = StorageMap<_, Twox64Concat, LpRank, Vec<T::Hash>>;
 
+	#[pallet::storage]
+	#[pallet::getter(fn lp_items_rank_index)]
+	/// Stores list of created LP Rank
+	pub(super) type LpItemsRankIndex<T: Config> = StorageMap<_, Twox64Concat, LpRank, Vec<u32>>;
+
 
 	// Pallets use events to inform users when important changes are made.
 	// https://docs.substrate.io/v3/runtime/events-and-errors
@@ -174,12 +179,12 @@ pub mod pallet {
 			<LpCount<T>>::put(new_cnt);
 			<LiquidityPoolsOwned<T>>::append(sender.clone(), lp_id);
 
-			let prev_cnt = new_cnt - 1;
-			<LiquidityPoolsIndex<T>>::insert(prev_cnt, lp_id);
-
+			let current_lp_idx = new_cnt - 1;
+			<LiquidityPoolsIndex<T>>::insert(&current_lp_idx, lp_id);
 
 			let lp_rank = Self::get_lprank(amount);
-			<LpItemsRank<T>>::append(lp_rank, lp_id);
+			<LpItemsRank<T>>::append(&lp_rank, lp_id);
+			<LpItemsRankIndex<T>>::append(lp_rank, current_lp_idx);
 
 			Self::deposit_event(Event::LPCreated(sender, lp_id));
 
@@ -190,11 +195,14 @@ pub mod pallet {
 		pub fn get_lp(origin: OriginFor<T>) -> DispatchResult {
 			let sender = ensure_signed(origin)?;
 
-			let random_lp_id = Self::get_next_lp_id().unwrap();
+			let lp_count = <LpCount<T>>::get();
+			ensure!(lp_count.gt(&0), <Error<T>>::LPNotExist);
 
-			log::info!("Random LP: {:?}.", random_lp_id);
+			let lp_id = Self::pick_a_suitable_lp().unwrap();
 
-			Self::deposit_event(Event::LPGetRandom(sender, random_lp_id));
+			log::info!("Random LP: {:?}.", lp_id);
+
+			Self::deposit_event(Event::LPGetRandom(sender, lp_id));
 
 			Ok(())
 		}
@@ -267,7 +275,11 @@ pub mod pallet {
 		fn pick_a_suitable_lp() -> Option<T::Hash> {
 			// TODO: Round robin or implement a suitable approach to get suitable LP
 			// And improve the picking speed
-			Some(T::Hashing::hash_of(b"TODO"))
+			match Self::choose_lp(<LpCount<T>>::get()) {
+				None => None,
+				Some(lp) => <LiquidityPoolsIndex<T>>::get(lp),
+			}
+			// Some(T::Hashing::hash_of(b"TODO"))
 		}
 	}
 
