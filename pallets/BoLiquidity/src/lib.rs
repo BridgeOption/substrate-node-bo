@@ -85,6 +85,7 @@ pub mod pallet {
 		pub id: T::Hash,
 		pub name: Vec<u8>,
 		pub amount: u64,
+		pub payout_rate: u8,
 		pub admin: AccountOf<T>,
 	}
 
@@ -153,7 +154,7 @@ pub mod pallet {
 		/// An example dispatchable that takes a singles value as a parameter, writes the value to
 		/// storage and emits an event. This function must be dispatched by a signed extrinsic.
 		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
-		pub fn create_lp(origin: OriginFor<T>, name: Vec<u8>, amount: u64) -> DispatchResult {
+		pub fn create_lp(origin: OriginFor<T>, name: Vec<u8>, amount: u64, payout_rate: u8) -> DispatchResult {
 			let sender = ensure_signed(origin)?;
 
 			let min_amount:u64 = 10000;
@@ -163,6 +164,7 @@ pub mod pallet {
 				id: T::Hashing::hash_of(&b"N/A"),
 				name: name,
 				amount: amount,
+				payout_rate: payout_rate,
 				admin: sender.clone()
 			};
 
