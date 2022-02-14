@@ -22,6 +22,11 @@ default-features = false
 path = '../pallets/BoTrading'
 version = '4.0.0-dev'
 
+[dependencies.pallet-symbol-price]
+default-features = false
+path = '../pallets/SymbolPrice'
+version = '4.0.0-dev'
+
 [dependencies.pallet-template]
 default-features = false
 path = '../pallets/template'

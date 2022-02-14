@@ -43,6 +43,7 @@ pub use sp_runtime::{Perbill, Permill};
 /// Import the BoTrading pallet.
 pub use pallet_bo_trading;
 pub use pallet_bo_liquidity;
+pub use pallet_symbol_price;
 
 /// Import the template pallet.
 pub use pallet_template;
@@ -291,6 +292,10 @@ impl pallet_bo_liquidity::Config for Runtime {
 	type MyRandomness = RandomnessCollectiveFlip;
 }
 
+impl pallet_symbol_price::Config for Runtime {
+	type Event = Event;
+}
+
 /// Configure the pallet-template in pallets/template.
 impl pallet_template::Config for Runtime {
 	type Event = Event;
@@ -315,6 +320,7 @@ construct_runtime!(
 		TemplateModule: pallet_template,
 		BoTradingModule: pallet_bo_trading,
 		BoLiquidityModule: pallet_bo_liquidity,
+		SymbolPriceModule: pallet_symbol_price,
 	}
 );
 
