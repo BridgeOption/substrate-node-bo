@@ -48,19 +48,25 @@ default-features = false
 git = "https://github.com/paritytech/substrate.git"
 tag = "devhub/latest"
 
-[dev-dependencies.sp-core]
+[dependencies]
+lite-json = { version = "0.1", default-features = false }
+sp-keystore = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate.git", tag = "devhub/latest", optional = true }
+log = { version = "0.4.14", default-features = false }
+
+
+[dependencies.sp-core]
 default-features = false
 git = 'https://github.com/paritytech/substrate.git'
 tag = 'devhub/latest'
 version = '4.0.0-dev'
 
-[dev-dependencies.sp-io]
+[dependencies.sp-io]
 default-features = false
 git = 'https://github.com/paritytech/substrate.git'
 tag = 'devhub/latest'
 version = '4.0.0-dev'
 
-[dev-dependencies.sp-runtime]
+[dependencies.sp-runtime]
 default-features = false
 git = 'https://github.com/paritytech/substrate.git'
 tag = 'devhub/latest'
@@ -72,9 +78,15 @@ runtime-benchmarks = ['frame-benchmarking']
 std = [
 	'codec/std',
 	'scale-info/std',
-	'sp-std/std',
 	'frame-support/std',
 	'frame-system/std',
 	'frame-benchmarking/std',
+	"lite-json/std",
+	"sp-core/std",
+	"sp-io/std",
+	"sp-keystore",
+	"sp-runtime/std",
+	"sp-std/std",
+	"log/std",
 ]
 try-runtime = ['frame-support/try-runtime']

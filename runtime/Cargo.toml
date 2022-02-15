@@ -12,6 +12,11 @@ repository = 'https://github.com/substrate-developer-hub/substrate-node-template
 [package.metadata.docs.rs]
 targets = ['x86_64-unknown-linux-gnu']
 
+#[dependencies]
+#lite-json = { version = "0.1", default-features = false }
+#sp-keystore = { version = "0.10.0-dev", git = "https://github.com/paritytech/substrate.git", tag = "devhub/latest", optional = true }
+#log = { version = "0.4.14", default-features = false }
+
 [dependencies.pallet-bo-liquidity]
 default-features = false
 path = '../pallets/BoLiquidity'
@@ -168,6 +173,12 @@ git = 'https://github.com/paritytech/substrate.git'
 tag = 'devhub/latest'
 version = '4.0.0-dev'
 
+#[dependencies.sp-io]
+#default-features = false
+#git = 'https://github.com/paritytech/substrate.git'
+#tag = 'devhub/latest'
+#version = '4.0.0-dev'
+
 [dependencies.sp-offchain]
 default-features = false
 git = 'https://github.com/paritytech/substrate.git'
@@ -224,6 +235,8 @@ std = [
     'frame-support/std',
     'frame-system-rpc-runtime-api/std',
     'frame-system/std',
+#	"lite-json/std",
+#	"log/std",
     'pallet-aura/std',
     'pallet-balances/std',
 	'pallet-bo-trading/std',
@@ -240,6 +253,8 @@ std = [
     'sp-consensus-aura/std',
     'sp-core/std',
     'sp-inherents/std',
+#	"sp-io/std",
+#	"sp-keystore",
     'sp-offchain/std',
     'sp-runtime/std',
     'sp-session/std',

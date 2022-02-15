@@ -14,17 +14,136 @@ mod tests;
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
 
+
+
+
+
+
+
+// use codec::{Decode, Encode};
+// use frame_support::traits::Get;
+// use frame_system::{
+// 	self as system,
+// 	offchain::{
+// 		AppCrypto, CreateSignedTransaction, SendSignedTransaction, SendUnsignedTransaction,
+// 		SignedPayload, Signer, SigningTypes, SubmitTransaction,
+// 	},
+// };
+// use lite_json::json::JsonValue;
+use sp_core::crypto::KeyTypeId;
+// use sp_runtime::{
+// 	offchain::{
+// 		http,
+// 		storage::{MutateStorageError, StorageRetrievalError, StorageValueRef},
+// 		Duration,
+// 	},
+// 	traits::Zero,
+// 	transaction_validity::{InvalidTransaction, TransactionValidity, ValidTransaction},
+// 	RuntimeDebug,
+// };
+// use sp_std::vec::Vec;
+
+
+
+
+
+
+/// Defines application identifier for crypto keys of this module.
+///
+/// Every module that deals with signatures needs to declare its unique identifier for
+/// its crypto keys.
+/// When offchain worker is signing transactions it's going to request keys of type
+/// `KeyTypeId` from the keystore and use the ones it finds to sign the transaction.
+/// The keys can be inserted manually via RPC (see `author_insertKey`).
+pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"btc!");
+
+/// Based on the above `KeyTypeId` we need to generate a pallet-specific crypto type wrappers.
+/// We can use from supported crypto kinds (`sr25519`, `ed25519` and `ecdsa`) and augment
+/// the types with this pallet-specific identifier.
+pub mod crypto {
+	use frame_system::offchain::AppCrypto;
+	use super::KEY_TYPE;
+	use sp_core::sr25519::Signature as Sr25519Signature;
+	use sp_runtime::{
+		app_crypto::{app_crypto, sr25519},
+		traits::Verify,
+		MultiSignature, MultiSigner,
+	};
+	app_crypto!(sr25519, KEY_TYPE);
+
+	pub struct TestAuthId;
+
+	impl AppCrypto<MultiSigner, MultiSignature> for TestAuthId {
+		type RuntimeAppPublic = Public;
+		type GenericSignature = sp_core::sr25519::Signature;
+		type GenericPublic = sp_core::sr25519::Public;
+	}
+
+	// implemented for mock runtime in test
+	impl AppCrypto<<Sr25519Signature as Verify>::Signer, Sr25519Signature>
+	for TestAuthId
+	{
+		type RuntimeAppPublic = Public;
+		type GenericSignature = sp_core::sr25519::Signature;
+		type GenericPublic = sp_core::sr25519::Public;
+	}
+}
+
+
+
+
+
+
+
+
+
 #[frame_support::pallet]
 pub mod pallet {
 	use frame_support::pallet_prelude::*;
 	use frame_system::pallet_prelude::*;
 	use sp_std::vec::Vec;
+	use frame_system::offchain::{AppCrypto, CreateSignedTransaction};
 
 	/// Configure the pallet by specifying the parameters and types on which it depends.
 	#[pallet::config]
-	pub trait Config: frame_system::Config {
+	// pub trait Config: frame_system::Config {
+	pub trait Config: frame_system::Config + CreateSignedTransaction<Call<Self>> {
 		/// Because this pallet emits events, it depends on the runtime's definition of an event.
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
+
+		/// The identifier type for an offchain worker.
+		type AuthorityId: AppCrypto<Self::Public, Self::Signature>;
+
+		/// The overarching dispatch call type.
+		type Call: From<Call<Self>>;
+
+		// Configuration parameters
+
+		/// A grace period after we send transaction.
+		///
+		/// To avoid sending too many transactions, we only attempt to send one
+		/// every `GRACE_PERIOD` blocks. We use Local Storage to coordinate
+		/// sending between distinct runs of this offchain worker.
+		#[pallet::constant]
+		type GracePeriod: Get<Self::BlockNumber>;
+
+		/// Number of blocks of cooldown after unsigned transaction is included.
+		///
+		/// This ensures that we only accept unsigned transactions once, every `UnsignedInterval`
+		/// blocks.
+		#[pallet::constant]
+		type UnsignedInterval: Get<Self::BlockNumber>;
+
+		/// A configuration for base priority of unsigned transactions.
+		///
+		/// This is exposed so that it can be tuned for particular runtime, when
+		/// multiple pallets send unsigned transactions.
+		#[pallet::constant]
+		type UnsignedPriority: Get<TransactionPriority>;
+
+		/// Maximum number of prices.
+		#[pallet::constant]
+		type MaxPrices: Get<u32>;
 	}
 
 	#[pallet::pallet]
