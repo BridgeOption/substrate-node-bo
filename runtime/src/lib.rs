@@ -316,9 +316,9 @@ impl pallet_symbol_price::Config for Runtime {
 	// type AuthorityId = AuraId;
 	type Call = Call;
 	type GracePeriod = ConstU32<1>;
-	type UnsignedInterval = ConstU32<1>;
+	type UnsignedInterval = ConstU32<0>;
 	type UnsignedPriority = UnsignedPriority;
-	type MaxPrices = ConstU32<64>;
+	type MaxPrices = ConstU32<32>;
 }
 
 impl<LocalCall> frame_system::offchain::CreateSignedTransaction<LocalCall> for Runtime

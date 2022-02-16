@@ -76,6 +76,7 @@ pub mod pallet {
 	use frame_support::pallet_prelude::*;
 	use frame_system::pallet_prelude::*;
 	use sp_std::vec::Vec;
+	use scale_info::prelude::string::String; // support String
 	use frame_system::{
 		self as system,
 		offchain::{
@@ -93,6 +94,7 @@ pub mod pallet {
 		traits::Zero,
 		transaction_validity::{InvalidTransaction, TransactionValidity, ValidTransaction},
 		RuntimeDebug,
+		SaturatedConversion,
 	};
 
 	/// Configure the pallet by specifying the parameters and types on which it depends.
@@ -187,6 +189,13 @@ pub mod pallet {
 	// pub(super) type Prices<T: Config> = StorageValue<_, BoundedVec<u32, T::MaxPrices>, ValueQuery>;
 	pub(super) type Prices<T: Config> = StorageValue<_, VecDeque<u32>, ValueQuery>;
 
+	/// Predict the next price using EMA
+	/// Why?
+	/// 	We need a realtime approximately price value => this is the best method
+	#[pallet::storage]
+	#[pallet::getter(fn next_predicted_price)]
+	pub(super) type NextPredictedPrice<T: Config> = StorageValue<_, (u32, T::BlockNumber), ValueQuery>;
+
 	/// Defines the block when next unsigned transaction will be accepted.
 	///
 	/// To prevent spam of unsigned (and unpayed!) transactions on the network,
@@ -218,12 +227,12 @@ pub mod pallet {
 		NoneValue,
 		/// Errors should have helpful documentation associated with them.
 		StorageOverflow,
+
+		/// Symbol was not supported
+		NotSupportedSymbol,
 	}
 
 
-	///
-	/// Avoid Error: No local accounts accounts available.
-	///
 	#[pallet::validate_unsigned]
 	impl<T: Config> ValidateUnsigned for Pallet<T> {
 		type Call = Call<T>;
@@ -271,7 +280,7 @@ pub mod pallet {
 			// significantly. You can use `RuntimeDebug` custom derive to hide details of the types
 			// in WASM. The `sp-api` crate also provides a feature `disable-logging` to disable
 			// all logging and thus, remove any logging from the WASM.
-			log::info!("Hello World from offchain workers!");
+			log::info!("Offchain workers hook: block_number: {:?}", block_number);
 
 			// Since off-chain workers are just part of the runtime code, they have direct access
 			// to the storage and other included pallets.
@@ -284,8 +293,8 @@ pub mod pallet {
 			// of the code to separate `impl` block.
 			// Here we call a helper function to calculate current average price.
 			// This function reads storage entries of the current state.
-			let average: Option<u32> = Self::average_price();
-			log::debug!("Current price: {:?}", average);
+			// let average: Option<u32> = Self::average_price();
+			// log::debug!("Current price: {:?}", average);
 
 			// For this example we are going to send both signed and unsigned transactions
 			// depending on the block number.
@@ -495,8 +504,8 @@ pub mod pallet {
 					// 	TransactionType::Raw
 					// }
 
-					// always unsigned for any
-					TransactionType::UnsignedForAny
+					// always return 1 type
+					TransactionType::Raw
 				},
 				// We are in the grace period, we should not send a transaction this time.
 				Err(MutateStorageError::ValueFunctionFailed(RECENTLY_SENT)) => TransactionType::None,
@@ -548,7 +557,7 @@ pub mod pallet {
 			// anyway.
 			let next_unsigned_at = <NextUnsignedAt<T>>::get();
 			if next_unsigned_at > block_number {
-				return Err("Too early to send unsigned transaction")
+				return Err("Too early to send unsigned transaction");
 			}
 
 			// Make an external HTTP request to fetch the current price.
@@ -598,7 +607,7 @@ pub mod pallet {
 						signature,
 					},
 				)
-				.ok_or("No local accounts accounts available.")?;
+				.ok_or("No local accounts accounts available.")?; // This error require to add the sp_keystore::SyncCryptoStore::sr25519_generate_new in /node/src/service.rs
 			result.map_err(|()| "Unable to submit transaction")?;
 
 			Ok(())
@@ -688,7 +697,7 @@ pub mod pallet {
 				},
 			}?;
 
-			log::warn!("Got price: {} cents", price);
+			log::warn!("fetch_price: {} cents", price);
 
 			Ok(price)
 		}
@@ -721,26 +730,54 @@ pub mod pallet {
 			// 		prices[(price % T::MaxPrices::get()) as usize] = price;
 			// 	}
 			// });
+
 			<Prices<T>>::mutate(|prices| {
-				prices.pop_front();
+				// Ensure len is bounded to MaxPrices
+				if prices.len() >= T::MaxPrices::get() as usize {
+					prices.pop_front();
+				}
+
 				prices.push_back(price);
 			});
 
 
-			let average = Self::average_price()
-				.expect("The average is not empty, because it was just mutated; qed");
-			log::info!("Current average price is: {}", average);
+			// let average = Self::average_price()
+			// 	.expect("The average is not empty, because it was just mutated; qed");
+			// log::info!("Current average price is: {}", average);
+
+			let predict_price = Self::calc_ema()
+				.expect("The ema is not empty, because it was just mutated; qed");
+			log::info!("next predict_price is: {}", predict_price);
+
 			// here we are raising the NewPrice event
 			Self::deposit_event(Event::NewPrice { price, maybe_who });
 		}
 
 		/// Calculate current average price.
-		fn average_price() -> Option<u32> {
+		// fn average_price() -> Option<u32> {
+		// 	let prices = <Prices<T>>::get();
+		// 	if prices.is_empty() {
+		// 		None
+		// 	} else {
+		// 		Some(prices.iter().fold(0_u32, |a, b| a.saturating_add(*b)) / prices.len() as u32)
+		// 	}
+		// }
+
+		fn calc_ema() -> Option<u32> {
 			let prices = <Prices<T>>::get();
-			if prices.is_empty() {
+			if prices.len() < 2 {
 				None
 			} else {
-				Some(prices.iter().fold(0_u32, |a, b| a.saturating_add(*b)) / prices.len() as u32)
+				// EMA=(closing price − previous day’s EMA)× smoothing_value + previous day’s EMA
+				// smoothing_value = (2 / (SMOOTHING_PERIOD + 1))
+				const SMOOTHING: u32 = (2 / (2 + 1));
+
+				let mut ema = prices[0];
+				for i in 1..(prices.len() - 1) {
+					ema = (prices[i] - ema) * SMOOTHING + ema;
+				}
+
+				Some(ema)
 			}
 		}
 
@@ -764,16 +801,17 @@ pub mod pallet {
 			// Note this doesn't make much sense when building an actual oracle, but this example
 			// is here mostly to show off offchain workers capabilities, not about building an
 			// oracle.
-			let avg_price = Self::average_price()
-				.map(|price| if &price > new_price { price - new_price } else { new_price - price })
-				.unwrap_or(0);
+			let (next_predicted_price) = <NextPredictedPrice<T>>::get();
+			let mut price_delta = if &next_predicted_price > new_price { next_predicted_price - new_price } else { new_price - next_predicted_price };
+			price_delta = price_delta * 100 / next_predicted_price;
 
-			ValidTransaction::with_tag_prefix("ExampleOffchainWorker")
+
+			ValidTransaction::with_tag_prefix("pallet-symbol-price___ocw")
 				// We set base priority to 2**20 and hope it's included before any other
 				// transactions in the pool. Next we tweak the priority depending on how much
 				// it differs from the current average. (the more it differs the more priority it
 				// has).
-				.priority(T::UnsignedPriority::get().saturating_add(avg_price as _))
+				.priority(T::UnsignedPriority::get().saturating_add(price_delta * 1000 as _))
 				// This transaction does not require anything else to go before into the pool.
 				// In theory we could require `previous_unsigned_at` transaction to go first,
 				// but it's not necessary in our case.
@@ -816,13 +854,43 @@ pub mod pallet {
 		/// Return None if no price was set at unix_ts
 		///
 		/// price is a u128, real price = price / 1*10^Symbol.decimal
-		fn get_price(symbol: Vec<u8>, unix_ts: Option<u64>) -> Option<SymbolPrice>;
+		fn get_price_at(symbol: Vec<u8>, unix_ts: Option<u64>) -> Option<SymbolPrice>;
+		fn get_price(symbol: Vec<u8>) -> Option<SymbolPrice>;
 	}
 
 	// impl<T: Config> BoLiquidityInterface for Module<T> {
 	impl<T: Config> SymbolPriceInterface for Pallet<T> {
-		fn get_price(symbol: Vec<u8>, unix_ts: Option<u64>) -> Option<SymbolPrice> {
-			return Some(0);
+		fn get_price_at(symbol: Vec<u8>, unix_ts: Option<u64>) -> Option<SymbolPrice> {
+			log::error!("Not implemented");
+			None
+		}
+		fn get_price(symbol: Vec<u8>) -> Option<SymbolPrice> {
+			let btc_usdt = String::from("BTC_USDT").into_bytes();
+
+			match symbol {
+				btc_usdt => {
+					let (next_predicted_price, predicted_at) = <NextPredictedPrice<T>>::get();
+					let current_block_number = <frame_system::Pallet<T>>::block_number();
+					if current_block_number > predicted_at {
+						// New block: return predict data
+						Some(next_predicted_price.into())
+					} else {
+						// Old block: Return current price
+						let prices = <Prices<T>>::get();
+						let p = prices.back();
+						if p.is_some() {
+							Some((p.unwrap().clone() + 0u32).into())
+							// Some(0u32.into())
+						} else {
+							None
+						}
+					}
+				},
+				_ => {
+					log::error!("InvalidTradingVolume: We support BTC_USDT only");
+					None
+				}
+			}
 		}
 	}
 	// End loosely coupling
