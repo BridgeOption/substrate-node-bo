@@ -34,6 +34,8 @@ pub mod pallet {
 	// use scale_info::prelude::string::String; // support String
 	use scale_info::prelude::vec::Vec;	// support Vec
 
+	use frame_support::traits::UnixTime; // support Timestamp
+
 	#[cfg(feature = "std")]
 	use frame_support::serde::{Deserialize, Serialize};
 	use pallet_bo_liquidity::BoLiquidityInterface;
@@ -52,6 +54,11 @@ pub mod pallet {
 
 		/// Use for create random data
 		type MyRandomness: Randomness<Self::Hash, Self::BlockNumber>;
+
+		/// Use get current time
+		type TimeProvider: UnixTime;
+
+
 	}
 
 	#[pallet::pallet]
@@ -280,7 +287,7 @@ pub mod pallet {
 			ensure!(min_vol_in_unit.le(&volume_in_unit), <Error<T>>::InvalidTradingVolume);
 			ensure!(max_vol_in_unit.ge(&volume_in_unit), <Error<T>>::InvalidTradingVolume);
 
-			let current_ts: u64 = 0; // TODO: Get current timestamp
+			let current_ts: u64 = T::TimeProvider::now().as_secs(); // TODO: Get current timestamp
 			ensure!(current_ts < expired_at, <Error<T>>::InvalidExpiredAt);
 
 			// Check the buyer has enough free balance to place this order

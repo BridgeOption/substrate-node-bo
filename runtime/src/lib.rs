@@ -288,6 +288,7 @@ impl pallet_bo_trading::Config for Runtime {
 	type Currency = Balances; // TODO: Ask: What is this?
 	type BoLiquidity = BoLiquidityModule;
 	type MyRandomness = RandomnessCollectiveFlip;
+	type TimeProvider = Timestamp;
 }
 
 impl pallet_bo_liquidity::Config for Runtime {
