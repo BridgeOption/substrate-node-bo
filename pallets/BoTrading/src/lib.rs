@@ -131,9 +131,9 @@ pub mod pallet {
 		pub expired_at: u64,
 		pub created_at: u64,
 		pub liquidity_pool_id: T::Hash,
-		pub payout_rate: u32, // win rate of the LP at the open time
+		pub payout_rate: u32, // percent (1-100): the win rate of the LP at the open time
 		pub open_price: SymbolPrice,
-		pub close_price: SymbolPrice,
+		pub close_price: Option<SymbolPrice>,
 		pub status: OrderStatus,
 	}
 
@@ -360,11 +360,10 @@ pub mod pallet {
 				expired_at,
 				created_at: current_ts,
 				liquidity_pool_id: suitable_lp_id.unwrap(), // unwrap is safe because of `ensure` check above
+				payout_rate: 0, // TODO: fix 95% or must get this from liquidity pool info
+				open_price: 0, // TODO: Get open price from SymbolPrice pallet
+				close_price: None,
 				status: OrderStatus::Created,
-				payout_rate: 95,
-				open_price: 0,
-				close_price: 0,
-
 			};
 
 			// TODO: Ask: Is this too complex? How can we improve this?
