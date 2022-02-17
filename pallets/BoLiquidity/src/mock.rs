@@ -18,7 +18,9 @@ frame_support::construct_runtime!(
 		UncheckedExtrinsic = UncheckedExtrinsic,
 	{
 		System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
-		BoTradingModule: pallet_bo_trading::{Pallet, Call, Storage, Event<T>},
+		Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
+		RandomnessCollectiveFlip: pallet_randomness_collective_flip::{Pallet, Storage},
+		BoLiquidityModule: pallet_bo_liquidity::{Pallet, Call, Storage, Event<T>},
 	}
 );
 
@@ -45,7 +47,7 @@ impl system::Config for Test {
 	type BlockHashCount = BlockHashCount;
 	type Version = ();
 	type PalletInfo = PalletInfo;
-	type AccountData = ();
+	type AccountData = pallet_balances::AccountData<u64>;
 	type OnNewAccount = ();
 	type OnKilledAccount = ();
 	type SystemWeightInfo = ();
@@ -53,8 +55,29 @@ impl system::Config for Test {
 	type OnSetCode = ();
 }
 
-impl pallet_bo_trading::Config for Test {
+parameter_types! {
+	pub const ExistentialDeposit: u64 = 1;
+}
+
+impl pallet_balances::Config for Test {
+	type AccountStore = System;
+	type Balance = u64;
+	type DustRemoval = ();
 	type Event = Event;
+	type ExistentialDeposit = ExistentialDeposit;
+	type MaxLocks = ();
+	type MaxReserves = ();
+	type ReserveIdentifier = [u8; 8];
+	type WeightInfo = ();
+}
+
+impl pallet_randomness_collective_flip::Config for Test {}
+
+impl pallet_bo_liquidity::Config for Test {
+	type Event = Event;
+
+	type Currency = Balances;
+	type MyRandomness = RandomnessCollectiveFlip;
 }
 
 // Build genesis storage according to the mock runtime.

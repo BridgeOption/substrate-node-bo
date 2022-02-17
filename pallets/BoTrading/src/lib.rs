@@ -296,7 +296,8 @@ pub mod pallet {
 			// TODO: Ensure: Allow a specific currency only!
 
 			// select a pool id for this order
-			let suitable_lp_id = T::BoLiquidity::get_suitable_lp();
+			let volumn = Self::balance_to_u64(volume_in_unit).unwrap();
+			let suitable_lp_id = T::BoLiquidity::get_suitable_lp(volumn);
 			ensure!(suitable_lp_id.is_some(), <Error<T>>::NoLiquidityPool);
 
 			// create orders
@@ -358,6 +359,10 @@ pub mod pallet {
 		// How to convert u64 <=> Balance : https://stackoverflow.com/a/56081118/4984888
 		pub fn u64_to_balance(input: u64) -> Option<BalanceOf<T>> {
 			input.try_into().ok()
+		}
+
+		pub fn balance_to_u64(input: BalanceOf<T>) -> Option<u64> {
+			TryInto::<u64>::try_into(input).ok()
 		}
 	}
 }

@@ -5,11 +5,11 @@
 /// <https://docs.substrate.io/v3/runtime/frame>
 pub use pallet::*;
 
-// #[cfg(test)]
-// mod mock;
+#[cfg(test)]
+mod mock;
 //
-// #[cfg(test)]
-// mod tests;
+#[cfg(test)]
+mod tests;
 //
 // #[cfg(feature = "runtime-benchmarks")]
 // mod benchmarking;
@@ -120,6 +120,10 @@ pub mod pallet {
 	/// Stores list of created LP Rank
 	pub(super) type LpItemsRankIndex<T: Config> = StorageMap<_, Twox64Concat, LpRank, Vec<u32>>;
 
+	#[pallet::storage]
+	#[pallet::getter(fn lp_random_index)]
+	pub(super) type LpRandomIndex<T: Config> = StorageValue<_, u32, ValueQuery>;
+
 
 	// Pallets use events to inform users when important changes are made.
 	// https://docs.substrate.io/v3/runtime/events-and-errors
@@ -139,10 +143,10 @@ pub mod pallet {
 		NoneValue,
 		/// Handles arithemtic overflow when incrementing the LP counter.
 		LPCntOverflow,
-		/// Handles checking whether the LP exists.
-		LPNotExist,
 		/// Handles checking amount when create LP
 		InvalidAmount,
+		/// Handles checking whether the LP doest not exists.
+		NoLiquidityPool,
 	}
 
 	// Dispatchable functions allows users to interact with the pallet and invoke state changes.
@@ -175,7 +179,7 @@ pub mod pallet {
 				.ok_or(<Error<T>>::LPCntOverflow)?;
 
 			// Check if the kitty does not already exist in our storage map
-			ensure!(Self::liquidity_pools(&lp_id) == None, <Error<T>>::LPNotExist);
+			ensure!(Self::liquidity_pools(&lp_id) == None, <Error<T>>::NoLiquidityPool);
 
 			<LiquidityPools<T>>::insert(lp_id, liquidity_pool);
 			<LpCount<T>>::put(new_cnt);
@@ -194,17 +198,18 @@ pub mod pallet {
 		}
 
 		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
-		pub fn get_lp(origin: OriginFor<T>) -> DispatchResult {
+		pub fn get_lp(origin: OriginFor<T>, volumn: u64) -> DispatchResult {
 			let sender = ensure_signed(origin)?;
 
-			let lp_count = <LpCount<T>>::get();
-			ensure!(lp_count.gt(&0), <Error<T>>::LPNotExist);
+			// let lp_count = <LpCount<T>>::get();
+			// ensure!(lp_count.gt(&0), <Error<T>>::LPNotExist);
+			
+			let lp_id = Self::pick_a_suitable_lp(volumn);
+			ensure!(lp_id.is_some(), <Error<T>>::NoLiquidityPool);
 
-			let lp_id = Self::pick_a_suitable_lp().unwrap();
+			log::info!("Random LP: {:?}.", lp_id.unwrap());
 
-			log::info!("Random LP: {:?}.", lp_id);
-
-			Self::deposit_event(Event::LPGetRandom(sender, lp_id));
+			Self::deposit_event(Event::LPGetRandom(sender, lp_id.unwrap()));
 
 			Ok(())
 		}
@@ -233,18 +238,29 @@ pub mod pallet {
 			if total == 0 {
 				return None
 			}
-			let mut random_number = Self::generate_random_number(0);
+
+			let mut pool_index = LpRandomIndex::<T>::get();
+			log::info!("current pool_index: {:?}.", pool_index);
+			let total = LpCount::<T>::get();
+
+			pool_index = (pool_index + 1) % total;
+			LpRandomIndex::<T>::put(pool_index);
+			log::info!("new pool_index: {:?}.", pool_index);
+
+			Some(pool_index)
+
+			// let mut random_number = Self::generate_random_number(0);
 	
-			// Best effort attempt to remove bias from modulus operator.
-			for i in 1..<LpCount<T>>::get() {
-				if random_number < u32::MAX - u32::MAX % total {
-					break
-				}
+			// // Best effort attempt to remove bias from modulus operator.
+			// for i in 1..<LpCount<T>>::get() {
+			// 	if random_number < u32::MAX - u32::MAX % total {
+			// 		break
+			// 	}
 	
-				random_number = Self::generate_random_number(i);
-			}
+			// 	random_number = Self::generate_random_number(i);
+			// }
 	
-			Some(random_number % total)
+			// Some(random_number % total)
 		}
 
 		/// Generate a random number from a given seed.
@@ -258,7 +274,7 @@ pub mod pallet {
 
 		/// Get a unique hash to use as lp id
 		fn get_next_lp_id() -> Option<T::Hash> {
-			// Use Randomness
+			// Use Round robin get random LP
 			match Self::choose_lp(<LpCount<T>>::get()) {
 				None => None,
 				Some(lp) => <LiquidityPoolsIndex<T>>::get(lp),
@@ -274,14 +290,10 @@ pub mod pallet {
 		}
 		So picking a LP from LpItemsRank will have O(1) time-complexity
 		 */
-		fn pick_a_suitable_lp() -> Option<T::Hash> {
+		fn pick_a_suitable_lp(volumn:u64) -> Option<T::Hash> {
 			// TODO: Round robin or implement a suitable approach to get suitable LP
 			// And improve the picking speed
-			match Self::choose_lp(<LpCount<T>>::get()) {
-				None => None,
-				Some(lp) => <LiquidityPoolsIndex<T>>::get(lp),
-			}
-			// Some(T::Hashing::hash_of(b"TODO"))
+			Self::get_next_lp_id()
 		}
 	}
 
@@ -290,14 +302,14 @@ pub mod pallet {
 	/// for using in other pallet
 	///
 	pub trait BoLiquidityInterface<THashType> {
-		fn get_suitable_lp() -> Option<THashType>;
+		fn get_suitable_lp(volumn:u64) -> Option<THashType>;
 	}
 
 	// impl<T: Config> BoLiquidityInterface for Module<T> {
 	impl<T: Config> BoLiquidityInterface<T::Hash> for Pallet<T> {
 		// use Pallet<T> instead of Module<T> to support calling in other impl of Pallet?
-		fn get_suitable_lp() -> Option<T::Hash> {
-			Self::pick_a_suitable_lp()
+		fn get_suitable_lp(volumn:u64) -> Option<T::Hash> {
+			Self::pick_a_suitable_lp(volumn)
 		}
 	}
 	// End loosely coupling
