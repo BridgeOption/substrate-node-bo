@@ -361,6 +361,10 @@ pub mod pallet {
 				created_at: current_ts,
 				liquidity_pool_id: suitable_lp_id.unwrap(), // unwrap is safe because of `ensure` check above
 				status: OrderStatus::Created,
+				payout_rate: 95,
+				open_price: 0,
+				close_price: 0,
+
 			};
 
 			// TODO: Ask: Is this too complex? How can we improve this?
@@ -394,7 +398,7 @@ pub mod pallet {
 		#[pallet::weight(1_000 + T::DbWeight::get().writes(1))]
 		pub fn close_order(
 			origin: OriginFor<T>,
-			order_id: T::Hashing,
+			order_id: T::Hash,
 			close_price: BalanceOf<T>,
 		) -> DispatchResult {
 			// let sender = ensure_signed(origin)?;

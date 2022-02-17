@@ -908,7 +908,7 @@ pub mod pallet {
 		fn fetch_live_price(symbol: Vec<u8>) -> Option<SymbolPrice> {
 			// Make an external HTTP request to fetch the current price.
 			// Note this call will block until response is received.
-			let price = Self::fetch_price().map_err(|_| "Failed to fetch price")?;
+			let price = Self::fetch_price().map_err(|_| "Failed to fetch price").ok()?;
 
 			Some(price.into())
 		}
