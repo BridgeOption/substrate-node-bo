@@ -33,6 +33,21 @@ pub use frame_support::{
 	},
 	StorageValue,
 };
+
+// for pallet_symbol_price
+use codec::Encode; // TODO: This might causing bug
+use frame_support::{
+	traits::{
+		ConstU32,
+		// ConstU64, // => In new substrate template version only
+	},
+};
+use frame_system::{
+	offchain::{
+		AppCrypto,
+	},
+};
+
 pub use pallet_balances::Call as BalancesCall;
 pub use pallet_timestamp::Call as TimestampCall;
 use pallet_transaction_payment::CurrencyAdapter;
@@ -46,6 +61,7 @@ pub use pallet_template;
 /// Import the BoTrading pallet.
 pub use pallet_bo_trading;
 pub use pallet_bo_liquidity;
+pub use pallet_symbol_price;
 
 /// An index to a block.
 pub type BlockNumber = u32;
@@ -278,11 +294,6 @@ impl pallet_sudo::Config for Runtime {
 	type Call = Call;
 }
 
-/// Configure the pallet-template in pallets/template.
-impl pallet_template::Config for Runtime {
-	type Event = Event;
-}
-
 impl pallet_bo_trading::Config for Runtime {
 	type Event = Event;
 	type Currency = Balances; // TODO: Ask: What is this?
@@ -295,6 +306,76 @@ impl pallet_bo_liquidity::Config for Runtime {
 	type Event = Event;
 	type Currency = Balances;
 	type MyRandomness = RandomnessCollectiveFlip;
+}
+
+parameter_types! {
+	pub const UnsignedPriority: u64 = 1 << 20;
+}
+impl pallet_symbol_price::Config for Runtime {
+	type Event = Event;
+	type AuthorityId = pallet_symbol_price::crypto::TestAuthId;
+	// type AuthorityId = AuraId;
+	type Call = Call;
+	type GracePeriod = ConstU32<1>;
+	type UnsignedInterval = ConstU32<0>;
+	type UnsignedPriority = UnsignedPriority;
+	type MaxPrices = ConstU32<32>;
+}
+
+impl<LocalCall> frame_system::offchain::CreateSignedTransaction<LocalCall> for Runtime
+	where Call: From<LocalCall>,
+{
+	fn create_transaction<C: frame_system::offchain::AppCrypto<Self::Public, Self::Signature>>(
+		call: Call,
+		public: <Signature as sp_runtime::traits::Verify>::Signer,
+		account: AccountId,
+		index: Index,
+	) -> Option<(Call, <UncheckedExtrinsic as sp_runtime::traits::Extrinsic>::SignaturePayload)> {
+		let period = BlockHashCount::get() as u64;
+		let current_block: u64 = (System::block_number()
+			// .saturated_into()
+			.saturating_sub(1)
+		) as u64;
+		let tip = 0;
+		let extra: SignedExtra = (
+			frame_system::CheckSpecVersion::<Runtime>::new(),
+			frame_system::CheckTxVersion::<Runtime>::new(),
+			frame_system::CheckGenesis::<Runtime>::new(),
+			frame_system::CheckEra::<Runtime>::from(generic::Era::mortal(period, current_block)),
+			frame_system::CheckNonce::<Runtime>::from(index),
+			frame_system::CheckWeight::<Runtime>::new(),
+			pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
+		);
+
+		let raw_payload = SignedPayload::new(call, extra)
+			.map_err(|e| {
+				log::warn!("Unable to create signed payload: {:?}", e);
+			})
+			.ok()?;
+
+		// TODO: This might causing bug:  using_encoded has many reference, plz use the right module
+		let signature = raw_payload.using_encoded(|payload| C::sign(payload, public))?;
+		let address = account;
+		let (call, extra, _) = raw_payload.deconstruct();
+		Some((call, (sp_runtime::MultiAddress::Id(address), signature.into(), extra)))
+	}
+}
+
+impl frame_system::offchain::SigningTypes for Runtime {
+	type Public = <Signature as sp_runtime::traits::Verify>::Signer;
+	type Signature = Signature;
+}
+
+impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
+	where Call: From<C>,
+{
+	type OverarchingCall = Call;
+	type Extrinsic = UncheckedExtrinsic;
+}
+
+/// Configure the pallet-template in pallets/template.
+impl pallet_template::Config for Runtime {
+	type Event = Event;
 }
 
 // Create the runtime by composing the FRAME pallets that were previously configured.
@@ -316,6 +397,7 @@ construct_runtime!(
 		TemplateModule: pallet_template,
 		BoTradingModule: pallet_bo_trading,
 		BoLiquidityModule: pallet_bo_liquidity,
+		SymbolPriceModule: pallet_symbol_price,
 	}
 );
 
@@ -337,6 +419,10 @@ pub type SignedExtra = (
 );
 /// Unchecked extrinsic type as expected by this runtime.
 pub type UncheckedExtrinsic = generic::UncheckedExtrinsic<Address, Call, Signature, SignedExtra>;
+
+/// The payload being signed in transactions.
+pub type SignedPayload = generic::SignedPayload<Call, SignedExtra>;
+
 /// Executive: handles dispatch to the various modules.
 pub type Executive = frame_executive::Executive<
 	Runtime,

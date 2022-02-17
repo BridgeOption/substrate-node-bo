@@ -137,6 +137,27 @@ pub fn new_partial(
 			telemetry: telemetry.as_ref().map(|x| x.handle()),
 		})?;
 
+	//
+	// https://docs.substrate.io/how-to-guides/v3/ocw/transactions/#overview
+	// Inject an account for this pallet to own.
+	// In a development environment (node running with --dev flag),
+	//
+	// This example adds the key for the Alice account to the key store
+	// identified by the pallet-defined KEY_TYPE.
+	// In production, one or more accounts are injected via chain spec configuration.
+	//
+	let keystore = keystore_container.sync_keystore();
+	if config.offchain_worker.enabled {
+		// Initialize seed for signing transaction using off-chain workers. This is a convenience
+		// so learners can see the transactions submitted simply running the node.
+		// Typically these keys should be inserted with RPC calls to `author_insertKey`.
+		sp_keystore::SyncCryptoStore::sr25519_generate_new(
+			&*keystore,
+			node_template_runtime::pallet_symbol_price::crypto::KEY_TYPE,
+			Some("//Alice"),
+		).expect("Creating key with account Alice should succeed.");
+	}
+
 	Ok(sc_service::PartialComponents {
 		client,
 		backend,
