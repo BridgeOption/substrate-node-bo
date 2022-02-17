@@ -301,13 +301,14 @@ pub mod pallet {
 			// Usually it's enough to choose one or the other.
 			let should_send = Self::choose_transaction_type(block_number);
 			let res = match should_send {
-				TransactionType::Signed => Self::fetch_price_and_send_signed(),
-				TransactionType::UnsignedForAny =>
-					Self::fetch_price_and_send_unsigned_for_any_account(block_number),
-				TransactionType::UnsignedForAll =>
-					Self::fetch_price_and_send_unsigned_for_all_accounts(block_number),
+				// TransactionType::Signed => Self::fetch_price_and_send_signed(),
+				// TransactionType::UnsignedForAny =>
+				// 	Self::fetch_price_and_send_unsigned_for_any_account(block_number),
+				// TransactionType::UnsignedForAll =>
+				// 	Self::fetch_price_and_send_unsigned_for_all_accounts(block_number),
 				TransactionType::Raw => Self::fetch_price_and_send_raw_unsigned(block_number),
 				TransactionType::None => Ok(()),
+				_ => Err("Invalid tx type"),
 			};
 			if let Err(e) = res {
 				log::error!("Error: {}", e);
@@ -518,6 +519,7 @@ pub mod pallet {
 			}
 		}
 
+		/*
 		/// A helper function to fetch the price and send signed transaction.
 		fn fetch_price_and_send_signed() -> Result<(), &'static str> {
 			let signer = Signer::<T, T::AuthorityId>::all_accounts();
@@ -550,6 +552,7 @@ pub mod pallet {
 
 			Ok(())
 		}
+		*/
 
 		/// A helper function to fetch the price and send a raw unsigned transaction.
 		fn fetch_price_and_send_raw_unsigned(block_number: T::BlockNumber) -> Result<(), &'static str> {
@@ -613,6 +616,7 @@ pub mod pallet {
 			Ok(())
 		}
 
+		/*
 		/// A helper function to fetch the price, sign payload and send an unsigned transaction
 		fn fetch_price_and_send_unsigned_for_all_accounts(
 			block_number: T::BlockNumber,
@@ -645,6 +649,7 @@ pub mod pallet {
 
 			Ok(())
 		}
+	 	*/
 
 		/// Fetch current price and return the result in cents.
 		fn fetch_price() -> Result<u32, http::Error> {
@@ -779,8 +784,10 @@ pub mod pallet {
 				let mut ema = prices[0];
 				for i in 1..(prices.len() - 1) {
 					ema = (prices[i] - ema) * SMOOTHING + ema;
+					log::info!("--> for loop: ema, i: {:?} {:?} {:?}", ema, i, prices[i]);
 				}
 
+				log::info!("ema: {:?}", ema);
 				Some(ema)
 			}
 		}
@@ -853,7 +860,7 @@ pub mod pallet {
 		symbol: Vec<u8>,
 		decimal: u8,
 	}
-	type SymbolPrice = u128;
+	pub type SymbolPrice = u128;
 
 	///
 	/// Expose for loosely coupling
@@ -906,11 +913,16 @@ pub mod pallet {
 		}
 
 		fn fetch_live_price(symbol: Vec<u8>) -> Option<SymbolPrice> {
+			// TODO: Handle symbol
 			// Make an external HTTP request to fetch the current price.
 			// Note this call will block until response is received.
-			let price = Self::fetch_price().map_err(|_| "Failed to fetch price")?;
-
-			Some(price.into())
+			let res = Self::fetch_price();
+			if res.is_err() {
+				None
+			} else {
+				let price = res.unwrap_or(0);
+				Some(price.into())
+			}
 		}
 	}
 	// End loosely coupling
