@@ -745,9 +745,13 @@ pub mod pallet {
 			// 	.expect("The average is not empty, because it was just mutated; qed");
 			// log::info!("Current average price is: {}", average);
 
-			let predict_price = Self::calc_ema()
-				.expect("The ema is not empty, because it was just mutated; qed");
-			log::info!("next predict_price is: {}", predict_price);
+			let predict_price = Self::calc_ema();
+			if predict_price.is_some() {
+				let current_block_number = <frame_system::Pallet<T>>::block_number();
+				log::info!("block@{:?} next predict_price is: {}", current_block_number, predict_price.unwrap());
+
+				<NextPredictedPrice<T>>::put((predict_price.unwrap(), current_block_number));
+			}
 
 			// here we are raising the NewPrice event
 			Self::deposit_event(Event::NewPrice { price, maybe_who });
@@ -770,7 +774,7 @@ pub mod pallet {
 			} else {
 				// EMA=(closing price − previous day’s EMA)× smoothing_value + previous day’s EMA
 				// smoothing_value = (2 / (SMOOTHING_PERIOD + 1))
-				const SMOOTHING: u32 = (2 / (2 + 1));
+				const SMOOTHING: u32 = 2 / (2 + 1);
 
 				let mut ema = prices[0];
 				for i in 1..(prices.len() - 1) {
@@ -778,6 +782,16 @@ pub mod pallet {
 				}
 
 				Some(ema)
+			}
+		}
+
+		fn calc_price_change_percent(new_price: &u32) -> u32 {
+			let (next_predicted_price, _) = <NextPredictedPrice<T>>::get();
+			if next_predicted_price > 0 {
+				let price_delta = if next_predicted_price > *new_price { next_predicted_price - new_price } else { new_price - next_predicted_price };
+				price_delta * 100 / next_predicted_price
+			} else {
+				0
 			}
 		}
 
@@ -801,17 +815,14 @@ pub mod pallet {
 			// Note this doesn't make much sense when building an actual oracle, but this example
 			// is here mostly to show off offchain workers capabilities, not about building an
 			// oracle.
-			let (next_predicted_price) = <NextPredictedPrice<T>>::get();
-			let mut price_delta = if &next_predicted_price > new_price { next_predicted_price - new_price } else { new_price - next_predicted_price };
-			price_delta = price_delta * 100 / next_predicted_price;
-
+			let price_delta = Self::calc_price_change_percent(new_price);
 
 			ValidTransaction::with_tag_prefix("pallet-symbol-price___ocw")
 				// We set base priority to 2**20 and hope it's included before any other
 				// transactions in the pool. Next we tweak the priority depending on how much
 				// it differs from the current average. (the more it differs the more priority it
 				// has).
-				.priority(T::UnsignedPriority::get().saturating_add(price_delta * 1000 as _))
+				.priority(T::UnsignedPriority::get().saturating_add((price_delta * 1000) as u64))
 				// This transaction does not require anything else to go before into the pool.
 				// In theory we could require `previous_unsigned_at` transaction to go first,
 				// but it's not necessary in our case.
@@ -856,6 +867,7 @@ pub mod pallet {
 		/// price is a u128, real price = price / 1*10^Symbol.decimal
 		fn get_price_at(symbol: Vec<u8>, unix_ts: Option<u64>) -> Option<SymbolPrice>;
 		fn get_price(symbol: Vec<u8>) -> Option<SymbolPrice>;
+		fn fetch_live_price(symbol: Vec<u8>) -> Option<SymbolPrice>;
 	}
 
 	// impl<T: Config> BoLiquidityInterface for Module<T> {
@@ -891,6 +903,14 @@ pub mod pallet {
 					None
 				}
 			}
+		}
+
+		fn fetch_live_price(symbol: Vec<u8>) -> Option<SymbolPrice> {
+			// Make an external HTTP request to fetch the current price.
+			// Note this call will block until response is received.
+			let price = Self::fetch_price().map_err(|_| "Failed to fetch price")?;
+
+			Some(price.into())
 		}
 	}
 	// End loosely coupling
