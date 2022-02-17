@@ -364,10 +364,6 @@ pub mod pallet {
 				open_price: 0, // TODO: Get open price from SymbolPrice pallet
 				close_price: None,
 				status: OrderStatus::Created,
-				payout_rate: 95,
-				open_price: 0,
-				close_price: 0,
-
 			};
 
 			// TODO: Ask: Is this too complex? How can we improve this?
