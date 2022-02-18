@@ -24,6 +24,8 @@ pub mod pallet {
 		dispatch::DispatchResult,
 		pallet_prelude::*,
 		sp_runtime::traits::Hash, // support T::Hashing
+		sp_runtime::SaturatedConversion,
+		sp_runtime::traits::AtLeast32BitUnsigned,
 		traits::{
 			Currency, ExistenceRequirement,
 			ExistenceRequirement::{AllowDeath, KeepAlive},
@@ -34,6 +36,7 @@ pub mod pallet {
 	use scale_info::prelude::string::String; // support String
 	use scale_info::prelude::vec::Vec;
 	use scale_info::TypeInfo; // support Vec
+	use scale_info::prelude::ops::Add;
 
 	use frame_support::traits::UnixTime; // support Timestamp
 
@@ -182,7 +185,12 @@ pub mod pallet {
 		/// parameters. [sender, order_id]
 		OrderCreated(T::AccountId, T::Hash),
 
-		OrderClosed(T::AccountId, u128, OrderStatus, BalanceOf<T>),
+		OrderClosed {
+			account_id: T::AccountId,
+			close_price: u128,
+			status: OrderStatus,
+			amout_payout: BalanceOf<T>,
+		},
 	}
 
 	// Errors inform users that something went wrong.
@@ -216,9 +224,10 @@ pub mod pallet {
 
 		fn validate_unsigned(source: TransactionSource, call: &Self::Call) -> TransactionValidity {
 			let valid_tx = |provide| {
+				let current_block_number =<frame_system::Pallet<T>>::block_number();
 				ValidTransaction::with_tag_prefix("bo_trading_crond")
 					// set priority to 2^18
-					.priority(1 << 18) // please define `UNSIGNED_TXS_PRIORITY` before this line
+					.priority(1 << 18 + Self::blocknumber_to_u64(current_block_number).unwrap()) // please define `UNSIGNED_TXS_PRIORITY` before this line
 					.and_provides([&provide])
 					.longevity(3)
 					.propagate(true)
@@ -444,21 +453,27 @@ pub mod pallet {
 						&order.user_id,
 						Self::u64_to_balance(volumn_payout * 10_u64.pow(CURRENCY_DECIMAL))
 							.ok_or(<Error<T>>::InvalidTradingVolume)?,
-						ExistenceRequirement::AllowDeath,
+						ExistenceRequirement::KeepAlive,
 					)?;
 				},
-				_ => (),
+				_ => log::info!("Lose: order_id, close_price: {:?}, {:?}", order_id, close_price),
 			}
 
 			let sender = ensure_signed(origin)?;
 			log::info!("close_order: order_id, close_price: {:?}, {:?}", order_id, close_price);
-			Self::deposit_event(Event::OrderClosed(
-				sender,
+			Self::deposit_event(Event::OrderClosed {
+				account_id: sender,
 				close_price,
 				status,
-				Self::u64_to_balance(volumn_payout * 10_u64.pow(CURRENCY_DECIMAL))
+				amout_payout: Self::u64_to_balance(volumn_payout * 10_u64.pow(CURRENCY_DECIMAL))
 					.ok_or(<Error<T>>::InvalidTradingVolume)?,
-			));
+			});
+
+			// Update info Orders
+			Orders::<T>::try_mutate_exists(&order_id, |order| -> DispatchResult {
+				let mut order = order.as_mut().ok_or(Error::<T>::OrderNotExist)?;
+				Ok(())
+			})?;
 
 			// TODO: Remove order in Orders -> push to OrderCompleted
 
@@ -491,6 +506,11 @@ pub mod pallet {
 			TryInto::<u64>::try_into(input).ok()
 		}
 
+		// How to convert BlockNumber <=> u64 : 
+		pub fn blocknumber_to_u64(input: T::BlockNumber) -> Option<u64> {
+			TryInto::<u64>::try_into(input).ok()
+		}
+
 		/// This is crond entry point:
 		///	- scan for expired tx from on-chain data
 		/// - liquid it out by sending a transaction to on-chain
@@ -510,6 +530,7 @@ pub mod pallet {
 						T::SymbolPriceModule::get_price(String::from("BTC_USDT").into_bytes())
 							.unwrap();
 
+					log::info!("Call close_order in block_number: {:?}", block_number);
 					// Create a call close_order
 					let call = Call::close_order { order_id: order.id, close_price };
 

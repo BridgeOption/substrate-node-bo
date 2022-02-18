@@ -25,6 +25,7 @@ frame-benchmarking = { default-features = false, version = "4.0.0-dev", git = "h
 pallet-bo-liquidity = { version = "4.0.0-dev", default-features = false, path = '../BoLiquidity' }
 pallet-symbol-price = { version = "4.0.0-dev", default-features = false, path = '../SymbolPrice' }
 
+
 [dependencies.pallet-timestamp]
 default-features = false
 git = 'https://github.com/paritytech/substrate.git'
@@ -36,7 +37,6 @@ default-features = false
 git = 'https://github.com/paritytech/substrate.git'
 tag = 'devhub/latest'
 version = '4.0.0-dev'
-
 
 [dev-dependencies]
 sp-core = { default-features = false, version = "4.0.0-dev", git = "https://github.com/paritytech/substrate.git", tag = "devhub/latest" }
