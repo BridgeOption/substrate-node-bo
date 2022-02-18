@@ -779,14 +779,14 @@ pub mod pallet {
 			} else {
 				// EMA=(closing price − previous day’s EMA)× smoothing_value + previous day’s EMA
 				// smoothing_value = (2 / (SMOOTHING_PERIOD + 1))
-				const SMOOTHING: u32 = 2 / (2 + 1);
-
+				const SMOOTHING: f32 = (2 / (2 + 1)) as f32;
+		
 				let mut ema = prices[0];
 				for i in 1..(prices.len() - 1) {
-					ema = (prices[i] - ema) * SMOOTHING + ema;
+					ema = ((prices[i] - ema) as f32 * SMOOTHING) as u32 + ema;
 					log::info!("--> for loop: ema, i: {:?} {:?} {:?}", ema, i, prices[i]);
 				}
-
+		
 				log::info!("ema: {:?}", ema);
 				Some(ema)
 			}
