@@ -451,7 +451,7 @@ pub mod pallet {
 			// TODO: Call the Pallet SymbolPrice to get the most updated price
 			let close_price: BalanceOf<T> = Self::u64_to_balance(0).ok_or("Cannot fake price")?;
 
-			Self::test_get_chain_spec_account();
+			// Self::test_get_chain_spec_account();
 
 			// Create a call
 			let call = Call::close_order {
