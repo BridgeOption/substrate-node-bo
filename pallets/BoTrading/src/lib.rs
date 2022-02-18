@@ -409,7 +409,7 @@ pub mod pallet {
 			match order {
 				Some(order) => {
 					// Check result
-					if order.open_price > close_price {
+					if order.open_price < close_price {
 						if order.trade_type == TradeType::Call {
 							//T::Currency::transfer(); // Payout
 							log::info!("Win: {:?}.", order.id);
