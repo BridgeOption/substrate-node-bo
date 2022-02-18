@@ -143,6 +143,7 @@ pub mod pallet {
 		/// parameters. [sender, lp_id]
 		LPCreated(T::AccountId, T::AccountId),
 		LPDeposit(T::AccountId, T::AccountId),
+		LPUpdated(T::AccountId, T::AccountId),
 		LPGetRandom(T::AccountId, T::AccountId),
 	}
 
@@ -263,7 +264,7 @@ pub mod pallet {
 				Ok(())
 			})?;
 
-			Self::deposit_event(Event::LPDeposit(sender, lp_id.clone()));
+			Self::deposit_event(Event::LPUpdated(sender, lp_id.clone()));
 
 			Ok(())
 		}
