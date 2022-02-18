@@ -223,31 +223,45 @@ pub mod pallet {
 			Ok(())
 		}
 
-		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
-		pub fn deposit_lp(origin: OriginFor<T>, lp_id: T::AccountId, amount: BalanceOf<T>) -> DispatchResult {
-			let sender = ensure_signed(origin)?;
+		// #[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
+		// pub fn deposit_lp(origin: OriginFor<T>, lp_id: T::AccountId, amount: BalanceOf<T>) -> DispatchResult {
+		// 	let sender = ensure_signed(origin)?;
 
-			let min_amount: BalanceOf<T> = Self::u64_to_balance(10000).ok_or(<Error<T>>::InvalidAmount)?;
-			ensure!(amount.ge(&min_amount), <Error<T>>::InvalidAmount);
+		// 	let min_amount: BalanceOf<T> = Self::u64_to_balance(10000).ok_or(<Error<T>>::InvalidAmount)?;
+		// 	ensure!(amount.ge(&min_amount), <Error<T>>::InvalidAmount);
 
-			// Check the buyer has enough free balance to create this lp
-			ensure!(T::Currency::free_balance(&sender) >= amount, <Error<T>>::NotEnoughBalance);
+		// 	// Check the buyer has enough free balance to create this lp
+		// 	ensure!(T::Currency::free_balance(&sender) >= amount, <Error<T>>::NotEnoughBalance);
 
-			// amount need larger than ExistentialDeposit const define in Runtime
-			T::Currency::transfer(&sender, &lp_id, amount, ExistenceRequirement::KeepAlive)?;
+		// 	// amount need larger than ExistentialDeposit const define in Runtime
+		// 	T::Currency::transfer(&sender, &lp_id, amount, ExistenceRequirement::KeepAlive)?;
 
-			// let lp_rank = Self::get_lprank(amount);
-			// <LpItemsRank<T>>::append(&lp_rank, lp_id.clone());
-			// <LpItemsRankIndex<T>>::append(lp_rank, current_lp_idx);
+		// 	// let lp_rank = Self::get_lprank(amount);
+		// 	// <LpItemsRank<T>>::append(&lp_rank, lp_id.clone());
+		// 	// <LpItemsRankIndex<T>>::append(lp_rank, current_lp_idx);
 
-			// *pool_0 = pool_0
-			// .checked_add(pool_0_increment)
-			// .ok_or(ArithmeticError::Overflow)?;
+		// 	// *pool_0 = pool_0
+		// 	// .checked_add(pool_0_increment)
+		// 	// .ok_or(ArithmeticError::Overflow)?;
 
-			Self::deposit_event(Event::LPDeposit(sender, lp_id.clone()));
+		// 	// LiquidityPools::<T>::try_mutate(lp_id, |(l_pool)| -> DispatchResult {
+		// 	// 	// *pool_0 = pool_0
+		// 	// 	// 	.checked_add(pool_0_increment)
+		// 	// 	// 	.ok_or(ArithmeticError::Overflow)?;
 
-			Ok(())
-		}
+		// 	// 	// *pool_1 = pool_1
+		// 	// 	// 	.checked_add(pool_1_increment)
+		// 	// 	// 	.ok_or(ArithmeticError::Overflow)?;
+		// 	// 	// *pool = pool.c
+				
+	
+		// 	// 	Ok(())
+		// 	// })?;
+
+		// 	Self::deposit_event(Event::LPDeposit(sender, lp_id.clone()));
+
+		// 	Ok(())
+		// }
 
 		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
 		pub fn get_lp(origin: OriginFor<T>, volumn: u64) -> DispatchResult {
