@@ -37,6 +37,11 @@ pub mod pallet {
 	#[cfg(feature = "std")]
 	use frame_support::serde::{Deserialize, Serialize};
 	use frame_system::offchain::{CreateSignedTransaction, SubmitTransaction};
+	// use sp_core::sr25519;
+	// #[cfg(feature = "full_crypto")]
+	// use sp_core::{Pair, Public};
+	// use sp_runtime::traits::{IdentifyAccount, Verify};
+	// use sp_runtime::MultiSignature;
 	use pallet_bo_liquidity::BoLiquidityInterface;
 
 
@@ -70,6 +75,9 @@ pub mod pallet {
 	 */
 	type AccountOf<T> = <T as frame_system::Config>::AccountId;
 	type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+	// type Signature = MultiSignature;
+	// type AccountPublic = <Signature as Verify>::Signer;
+	// type AccountIdRuntime = <<Signature as Verify>::Signer as IdentifyAccount>::AccountId;
 
 	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo)]
 	#[scale_info(skip_type_params(T))]
@@ -443,6 +451,8 @@ pub mod pallet {
 			// TODO: Call the Pallet SymbolPrice to get the most updated price
 			let close_price: BalanceOf<T> = Self::u64_to_balance(0).ok_or("Cannot fake price")?;
 
+			Self::test_get_chain_spec_account();
+
 			// Create a call
 			let call = Call::close_order {
 				order_id: T::Hashing::hash_of(&b"TODO...."),
@@ -454,5 +464,36 @@ pub mod pallet {
 
 			Ok(())
 		}
+
+		// pub fn test_get_chain_spec_account() {
+		// 	log::info!("Get Bob: {:?}", Self::get_chain_spec_account("Bob"));
+		// }
+		//
+		// pub fn get_chain_spec_account(account_name: &str) -> AccountOf<T> {
+		// 	let alice_hex = hex_literal::hex!["d43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d"];
+		// 	let bob: AccountOf<T> = alice_hex.into(); // This not work
+		// 	Some(bob)
+		// }
+		//
+		// pub fn get_chain_spec_account(account_name: &str) -> Option<AccountIdRuntime> {
+		// 	let bob: AccountIdRuntime = Self::get_account_id_from_seed::<sr25519::Public>(account_name);
+		//
+		// 	Some(bob)
+		// }
+
+		// /// Generate a crypto pair from seed.
+		// fn get_from_seed<TPublic: Public>(seed: &str) -> <TPublic::Pair as Pair>::Public {
+		// 	TPublic::Pair::from_string(&format!("//{}", seed), None)
+		// 		.expect("static values are valid; qed")
+		// 		.public()
+		// }
+		//
+		// /// Generate an account ID from seed.
+		// fn get_account_id_from_seed<TPublic: Public>(seed: &str) -> AccountIdRuntime
+		// 	where
+		// 		AccountPublic: From<<TPublic::Pair as Pair>::Public>,
+		// {
+		// 	AccountPublic::from(Self::get_from_seed::<TPublic>(seed)).into_account()
+		// }
 	}
 }
