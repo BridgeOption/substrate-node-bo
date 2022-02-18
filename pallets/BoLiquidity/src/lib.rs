@@ -24,8 +24,13 @@ pub mod pallet {
 		traits::{
 			Randomness,
 			Currency,
+			tokens::ExistenceRequirement,
 		},
+		PalletId,
 	};
+
+	use sp_runtime::traits::AccountIdConversion;
+
 	use scale_info::TypeInfo;
 	// use scale_info::prelude::string::String; // support String
 	use scale_info::prelude::vec::Vec;	// support Vec
@@ -34,6 +39,7 @@ pub mod pallet {
 	use frame_support::serde::{Deserialize, Serialize};
 
 	type AccountOf<T> = <T as frame_system::Config>::AccountId;
+	type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
 	/// Configure the pallet by specifying the parameters and types on which it depends.
 	#[pallet::config]
@@ -46,6 +52,9 @@ pub mod pallet {
 
 		/// Use for create random data
 		type MyRandomness: Randomness<Self::Hash, Self::BlockNumber>;
+
+		#[pallet::constant]
+        type PalletId: Get<PalletId>;
 	}
 
 
@@ -82,11 +91,11 @@ pub mod pallet {
 	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo)]
 	#[scale_info(skip_type_params(T))]
 	pub struct LiquidityPool<T: Config> {
-		pub id: T::Hash,
+		pub id: T::AccountId,
 		pub name: Vec<u8>,
-		pub amount: u64,
+		pub amount: BalanceOf<T>,
 		pub payout_rate: u8,
-		pub admin: AccountOf<T>,
+		pub admin: T::AccountId,
 	}
 
 	#[pallet::storage]
@@ -96,16 +105,16 @@ pub mod pallet {
 	#[pallet::storage]
 	#[pallet::getter(fn liquidity_pools)]
 	/// Stores list of created lp
-	pub(super) type LiquidityPools<T: Config> = StorageMap<_, Twox64Concat, T::Hash, LiquidityPool<T>>;
+	pub(super) type LiquidityPools<T: Config> = StorageMap<_, Twox64Concat, T::AccountId, LiquidityPool<T>>;
 
 	#[pallet::storage]
 	#[pallet::getter(fn liquidity_pools_owned)]
 	/// Keeps track of what accounts own what LP.
-	pub(super) type LiquidityPoolsOwned<T: Config> = StorageMap<_, Twox64Concat, T::AccountId, Vec<T::Hash>, ValueQuery>;
+	pub(super) type LiquidityPoolsOwned<T: Config> = StorageMap<_, Twox64Concat, T::AccountId, Vec<T::AccountId>, ValueQuery>;
 
 	#[pallet::storage]
 	#[pallet::getter(fn liquidity_pools_index)]
-	pub(crate) type LiquidityPoolsIndex<T: Config> = StorageMap<_, Twox64Concat, u32, T::Hash, OptionQuery>;
+	pub(crate) type LiquidityPoolsIndex<T: Config> = StorageMap<_, Twox64Concat, u32, T::AccountId, OptionQuery>;
 
 	// TODO: Multi-sig for this pool
 
@@ -113,7 +122,7 @@ pub mod pallet {
 	#[pallet::storage]
 	#[pallet::getter(fn lp_items_rank)]
 	/// Stores list of created LP Rank
-	pub(super) type LpItemsRank<T: Config> = StorageMap<_, Twox64Concat, LpRank, Vec<T::Hash>>;
+	pub(super) type LpItemsRank<T: Config> = StorageMap<_, Twox64Concat, LpRank, Vec<T::AccountId>>;
 
 	#[pallet::storage]
 	#[pallet::getter(fn lp_items_rank_index)]
@@ -132,8 +141,9 @@ pub mod pallet {
 	pub enum Event<T: Config> {
 		/// The order was created
 		/// parameters. [sender, lp_id]
-		LPCreated(T::AccountId, T::Hash),
-		LPGetRandom(T::AccountId, T::Hash),
+		LPCreated(T::AccountId, T::AccountId),
+		LPDeposit(T::AccountId, T::AccountId),
+		LPGetRandom(T::AccountId, T::AccountId),
 	}
 
 	// Errors inform users that something went wrong.
@@ -147,6 +157,10 @@ pub mod pallet {
 		InvalidAmount,
 		/// Handles checking whether the LP doest not exists.
 		NoLiquidityPool,
+		/// Not enough balance to create lp
+		NotEnoughBalance,
+		/// Handles checking payout rate when create LP
+		InvalidPayoutRate,
 	}
 
 	// Dispatchable functions allows users to interact with the pallet and invoke state changes.
@@ -155,47 +169,99 @@ pub mod pallet {
 	#[pallet::call]
 	impl<T: Config> Pallet<T> {
 
+		
+
 		/// An example dispatchable that takes a singles value as a parameter, writes the value to
 		/// storage and emits an event. This function must be dispatched by a signed extrinsic.
 		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
-		pub fn create_lp(origin: OriginFor<T>, name: Vec<u8>, amount: u64, payout_rate: u8) -> DispatchResult {
+		pub fn create_lp(origin: OriginFor<T>, name: Vec<u8>, payout_rate: u8, amount: BalanceOf<T>) -> DispatchResult {
 			let sender = ensure_signed(origin)?;
 
-			let min_amount:u64 = 10000;
+			let min_amount: BalanceOf<T> = Self::u64_to_balance(10000).ok_or(<Error<T>>::InvalidAmount)?;
 			ensure!(amount.ge(&min_amount), <Error<T>>::InvalidAmount);
-
-			let mut liquidity_pool = LiquidityPool::<T> {
-				id: T::Hashing::hash_of(&b"N/A"),
-				name: name,
-				amount: amount,
-				payout_rate: payout_rate,
-				admin: sender.clone()
-			};
-
-			let lp_id = T::Hashing::hash_of(&liquidity_pool);
-			liquidity_pool.id = lp_id;
 
 			let new_cnt = Self::lp_count().checked_add(1)
 				.ok_or(<Error<T>>::LPCntOverflow)?;
+			let current_lp_idx = new_cnt - 1;
 
-			// Check if the kitty does not already exist in our storage map
+			// let pallet_account_id = Self::account_id();
+			let lp_id = Self::sub_account_id(current_lp_idx);
+
+			let mut liquidity_pool = LiquidityPool::<T> {
+				id: lp_id.clone(),
+				name: name,
+				amount: amount,
+				payout_rate: payout_rate,
+				admin: sender.clone(),
+			};
+
+			ensure!(payout_rate > 0, <Error<T>>::InvalidPayoutRate);
+			ensure!(payout_rate < 100, <Error<T>>::InvalidPayoutRate);
+
+			// Check if the lp does not already exist in our storage map
 			ensure!(Self::liquidity_pools(&lp_id) == None, <Error<T>>::NoLiquidityPool);
 
-			<LiquidityPools<T>>::insert(lp_id, liquidity_pool);
-			<LpCount<T>>::put(new_cnt);
-			<LiquidityPoolsOwned<T>>::append(sender.clone(), lp_id);
+			// Check the buyer has enough free balance to create this lp
+			ensure!(T::Currency::free_balance(&sender) >= amount, <Error<T>>::NotEnoughBalance);
 
-			let current_lp_idx = new_cnt - 1;
-			<LiquidityPoolsIndex<T>>::insert(&current_lp_idx, lp_id);
+			// amount need larger than ExistentialDeposit const define in Runtime
+			T::Currency::transfer(&sender, &lp_id, amount, ExistenceRequirement::KeepAlive)?;
+
+			<LiquidityPools<T>>::insert(lp_id.clone(), liquidity_pool);
+			<LpCount<T>>::put(new_cnt);
+			<LiquidityPoolsOwned<T>>::append(sender.clone(), lp_id.clone());
+
+			
+			<LiquidityPoolsIndex<T>>::insert(&current_lp_idx, lp_id.clone());
 
 			let lp_rank = Self::get_lprank(amount);
-			<LpItemsRank<T>>::append(&lp_rank, lp_id);
+			<LpItemsRank<T>>::append(&lp_rank, lp_id.clone());
 			<LpItemsRankIndex<T>>::append(lp_rank, current_lp_idx);
 
-			Self::deposit_event(Event::LPCreated(sender, lp_id));
+			Self::deposit_event(Event::LPCreated(sender, lp_id.clone()));
 
 			Ok(())
 		}
+
+		// #[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
+		// pub fn deposit_lp(origin: OriginFor<T>, lp_id: T::AccountId, amount: BalanceOf<T>) -> DispatchResult {
+		// 	let sender = ensure_signed(origin)?;
+
+		// 	let min_amount: BalanceOf<T> = Self::u64_to_balance(10000).ok_or(<Error<T>>::InvalidAmount)?;
+		// 	ensure!(amount.ge(&min_amount), <Error<T>>::InvalidAmount);
+
+		// 	// Check the buyer has enough free balance to create this lp
+		// 	ensure!(T::Currency::free_balance(&sender) >= amount, <Error<T>>::NotEnoughBalance);
+
+		// 	// amount need larger than ExistentialDeposit const define in Runtime
+		// 	T::Currency::transfer(&sender, &lp_id, amount, ExistenceRequirement::KeepAlive)?;
+
+		// 	// let lp_rank = Self::get_lprank(amount);
+		// 	// <LpItemsRank<T>>::append(&lp_rank, lp_id.clone());
+		// 	// <LpItemsRankIndex<T>>::append(lp_rank, current_lp_idx);
+
+		// 	// *pool_0 = pool_0
+		// 	// .checked_add(pool_0_increment)
+		// 	// .ok_or(ArithmeticError::Overflow)?;
+
+		// 	// LiquidityPools::<T>::try_mutate(lp_id, |(l_pool)| -> DispatchResult {
+		// 	// 	// *pool_0 = pool_0
+		// 	// 	// 	.checked_add(pool_0_increment)
+		// 	// 	// 	.ok_or(ArithmeticError::Overflow)?;
+
+		// 	// 	// *pool_1 = pool_1
+		// 	// 	// 	.checked_add(pool_1_increment)
+		// 	// 	// 	.ok_or(ArithmeticError::Overflow)?;
+		// 	// 	// *pool = pool.c
+				
+	
+		// 	// 	Ok(())
+		// 	// })?;
+
+		// 	Self::deposit_event(Event::LPDeposit(sender, lp_id.clone()));
+
+		// 	Ok(())
+		// }
 
 		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
 		pub fn get_lp(origin: OriginFor<T>, volumn: u64) -> DispatchResult {
@@ -207,9 +273,9 @@ pub mod pallet {
 			let lp_id = Self::pick_a_suitable_lp(volumn);
 			ensure!(lp_id.is_some(), <Error<T>>::NoLiquidityPool);
 
-			log::info!("Random LP: {:?}.", lp_id.unwrap());
+			log::info!("Random LP: {:?}.", lp_id.clone().unwrap());
 
-			Self::deposit_event(Event::LPGetRandom(sender, lp_id.unwrap()));
+			Self::deposit_event(Event::LPGetRandom(sender, lp_id.clone().unwrap()));
 
 			Ok(())
 		}
@@ -219,13 +285,33 @@ pub mod pallet {
 
 	/// Internal helpers fn
 	impl<T: Config> Pallet<T> {
+
+		pub fn account_id() -> T::AccountId {
+			T::PalletId::get().into_account()
+		}
+
+		/// The account ID of a sub account
+		pub fn sub_account_id(id: u32) -> T::AccountId {
+			T::PalletId::get().into_sub_account(("bt", id))
+		}
+
+		pub fn u64_to_balance(input: u64) -> Option<BalanceOf<T>> {
+			input.try_into().ok()
+		}
+
+		pub fn balance_to_u64(input: BalanceOf<T>) -> Option<u64> {
+			TryInto::<u64>::try_into(input).ok()
+		}
+
 		/// Get LP rank by amount
-		fn get_lprank (amount: u64) -> LpRank {
-			if amount < 10000 {
+		fn get_lprank (amount: BalanceOf<T>) -> LpRank {
+			let amount_u64 = Self::balance_to_u64(amount).unwrap();
+
+			if amount_u64 < 10000 {
 				return LpRank::Inactive;
-			} else if amount >= 10000 && amount < 500000 {
+			} else if amount_u64 >= 10000 && amount_u64 < 500000 {
 				return LpRank::Tiny;
-			} else if amount >= 500000 {
+			} else if amount_u64 >= 500000 {
 				return LpRank::Earth;
 			} else {
 				return LpRank::Inactive;
@@ -273,7 +359,7 @@ pub mod pallet {
 		}
 
 		/// Get a unique hash to use as lp id
-		fn get_next_lp_id() -> Option<T::Hash> {
+		fn get_next_lp_id() -> Option<T::AccountId> {
 			// Use Round robin get random LP
 			match Self::choose_lp(<LpCount<T>>::get()) {
 				None => None,
@@ -290,7 +376,7 @@ pub mod pallet {
 		}
 		So picking a LP from LpItemsRank will have O(1) time-complexity
 		 */
-		fn pick_a_suitable_lp(volumn:u64) -> Option<T::Hash> {
+		fn pick_a_suitable_lp(volumn:u64) -> Option<T::AccountId> {
 			// TODO: Round robin or implement a suitable approach to get suitable LP
 			// And improve the picking speed
 			Self::get_next_lp_id()
@@ -301,14 +387,14 @@ pub mod pallet {
 	/// Expose for loosely coupling
 	/// for using in other pallet
 	///
-	pub trait BoLiquidityInterface<THashType> {
-		fn get_suitable_lp(volumn:u64) -> Option<THashType>;
+	pub trait BoLiquidityInterface<TAccountId> {
+		fn get_suitable_lp(volumn:u64) -> Option<TAccountId>;
 	}
 
 	// impl<T: Config> BoLiquidityInterface for Module<T> {
-	impl<T: Config> BoLiquidityInterface<T::Hash> for Pallet<T> {
+	impl<T: Config> BoLiquidityInterface<T::AccountId> for Pallet<T> {
 		// use Pallet<T> instead of Module<T> to support calling in other impl of Pallet?
-		fn get_suitable_lp(volumn:u64) -> Option<T::Hash> {
+		fn get_suitable_lp(volumn:u64) -> Option<T::AccountId> {
 			Self::pick_a_suitable_lp(volumn)
 		}
 	}
