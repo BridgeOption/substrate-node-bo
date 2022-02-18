@@ -3581,6 +3581,7 @@ dependencies = [
  "log",
  "pallet-bo-liquidity",
  "pallet-scheduler",
+ "pallet-symbol-price",
  "pallet-timestamp",
  "parity-scale-codec",
  "scale-info",

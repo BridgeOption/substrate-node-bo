@@ -23,6 +23,7 @@ frame-support = { default-features = false, version = "4.0.0-dev", git = "https:
 frame-system = { default-features = false, version = "4.0.0-dev", git = "https://github.com/paritytech/substrate.git", tag = "devhub/latest" }
 frame-benchmarking = { default-features = false, version = "4.0.0-dev", git = "https://github.com/paritytech/substrate.git", tag = "devhub/latest", optional = true }
 pallet-bo-liquidity = { version = "4.0.0-dev", default-features = false, path = '../BoLiquidity' }
+pallet-symbol-price = { version = "4.0.0-dev", default-features = false, path = '../SymbolPrice' }
 
 [dependencies.pallet-timestamp]
 default-features = false

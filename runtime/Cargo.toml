@@ -78,6 +78,7 @@ std = [
 	"pallet-template/std",
     "pallet-bo-trading/std",
 	"pallet-bo-liquidity/std",
+	"pallet-symbol-price/std",
 	"pallet-timestamp/std",
 	"pallet-transaction-payment-rpc-runtime-api/std",
 	"pallet-transaction-payment/std",
