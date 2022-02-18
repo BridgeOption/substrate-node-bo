@@ -210,8 +210,6 @@ pub mod pallet {
 			<LiquidityPools<T>>::insert(lp_id.clone(), liquidity_pool);
 			<LpCount<T>>::put(new_cnt);
 			<LiquidityPoolsOwned<T>>::append(sender.clone(), lp_id.clone());
-
-			
 			<LiquidityPoolsIndex<T>>::insert(&current_lp_idx, lp_id.clone());
 
 			let lp_rank = Self::get_lprank(amount);
@@ -223,57 +221,61 @@ pub mod pallet {
 			Ok(())
 		}
 
-		// #[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
-		// pub fn deposit_lp(origin: OriginFor<T>, lp_id: T::AccountId, amount: BalanceOf<T>) -> DispatchResult {
-		// 	let sender = ensure_signed(origin)?;
+		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
+		pub fn deposit_lp(origin: OriginFor<T>, lp_id: T::AccountId, amount: BalanceOf<T>) -> DispatchResult {
+			let sender = ensure_signed(origin)?;
 
-		// 	let min_amount: BalanceOf<T> = Self::u64_to_balance(10000).ok_or(<Error<T>>::InvalidAmount)?;
-		// 	ensure!(amount.ge(&min_amount), <Error<T>>::InvalidAmount);
+			let min_amount: BalanceOf<T> = Self::u64_to_balance(10000).ok_or(<Error<T>>::InvalidAmount)?;
+			ensure!(amount.ge(&min_amount), <Error<T>>::InvalidAmount);
 
-		// 	// Check the buyer has enough free balance to create this lp
-		// 	ensure!(T::Currency::free_balance(&sender) >= amount, <Error<T>>::NotEnoughBalance);
+			// Check the buyer has enough free balance to create this lp
+			ensure!(T::Currency::free_balance(&sender) >= amount, <Error<T>>::NotEnoughBalance);
 
-		// 	// amount need larger than ExistentialDeposit const define in Runtime
-		// 	T::Currency::transfer(&sender, &lp_id, amount, ExistenceRequirement::KeepAlive)?;
+			LiquidityPools::<T>::try_mutate_exists(&lp_id, |liquidity_pool| -> DispatchResult {
+				let mut lp = liquidity_pool.as_mut().ok_or(Error::<T>::NoLiquidityPool)?;
+				lp.amount = lp.amount + amount;
 
-		// 	// let lp_rank = Self::get_lprank(amount);
-		// 	// <LpItemsRank<T>>::append(&lp_rank, lp_id.clone());
-		// 	// <LpItemsRankIndex<T>>::append(lp_rank, current_lp_idx);
+				// amount need larger than ExistentialDeposit const define in Runtime
+				T::Currency::transfer(&sender, &lp_id, amount, ExistenceRequirement::KeepAlive)?;
 
-		// 	// *pool_0 = pool_0
-		// 	// .checked_add(pool_0_increment)
-		// 	// .ok_or(ArithmeticError::Overflow)?;
+				Ok(())
+			})?;
 
-		// 	// LiquidityPools::<T>::try_mutate(lp_id, |(l_pool)| -> DispatchResult {
-		// 	// 	// *pool_0 = pool_0
-		// 	// 	// 	.checked_add(pool_0_increment)
-		// 	// 	// 	.ok_or(ArithmeticError::Overflow)?;
+			Self::deposit_event(Event::LPDeposit(sender, lp_id.clone()));
 
-		// 	// 	// *pool_1 = pool_1
-		// 	// 	// 	.checked_add(pool_1_increment)
-		// 	// 	// 	.ok_or(ArithmeticError::Overflow)?;
-		// 	// 	// *pool = pool.c
-				
-	
-		// 	// 	Ok(())
-		// 	// })?;
+			Ok(())
+		}
 
-		// 	Self::deposit_event(Event::LPDeposit(sender, lp_id.clone()));
+		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
+		pub fn update_lp(origin: OriginFor<T>, lp_id: T::AccountId, name: Vec<u8>, payout_rate: u8) -> DispatchResult {
+			let sender = ensure_signed(origin)?;
 
-		// 	Ok(())
-		// }
+			LiquidityPools::<T>::try_mutate_exists(&lp_id, |liquidity_pool| -> DispatchResult {
+				let mut lp = liquidity_pool.as_mut().ok_or(Error::<T>::NoLiquidityPool)?;
+				let owner = lp.admin.clone();
+				ensure!(owner == sender, "You are not the owner lp");
+				ensure!(payout_rate > 0, <Error<T>>::InvalidPayoutRate);
+				ensure!(payout_rate < 100, <Error<T>>::InvalidPayoutRate);
+
+				lp.name = name;
+				lp.payout_rate = payout_rate;
+
+				Ok(())
+			})?;
+
+			Self::deposit_event(Event::LPDeposit(sender, lp_id.clone()));
+
+			Ok(())
+		}
 
 		#[pallet::weight(10_000 + T::DbWeight::get().writes(1))]
 		pub fn get_lp(origin: OriginFor<T>, volumn: u64) -> DispatchResult {
 			let sender = ensure_signed(origin)?;
 
-			// let lp_count = <LpCount<T>>::get();
-			// ensure!(lp_count.gt(&0), <Error<T>>::LPNotExist);
-			
 			let lp_id = Self::pick_a_suitable_lp(volumn);
 			ensure!(lp_id.is_some(), <Error<T>>::NoLiquidityPool);
 
-			log::info!("Random LP: {:?}.", lp_id.clone().unwrap());
+			// log::info!("Random LP: {:?}.", lp_id.clone().unwrap());
 
 			Self::deposit_event(Event::LPGetRandom(sender, lp_id.clone().unwrap()));
 
