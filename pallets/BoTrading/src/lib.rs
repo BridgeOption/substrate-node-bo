@@ -36,7 +36,7 @@ pub mod pallet {
 
 	#[cfg(feature = "std")]
 	use frame_support::serde::{Deserialize, Serialize};
-	use frame_system::offchain::SubmitTransaction;
+	use frame_system::offchain::{CreateSignedTransaction, SubmitTransaction};
 	use pallet_bo_liquidity::BoLiquidityInterface;
 
 
@@ -45,7 +45,7 @@ pub mod pallet {
 
 	/// Configure the pallet by specifying the parameters and types on which it depends.
 	#[pallet::config]
-	pub trait Config: frame_system::Config {
+	pub trait Config: CreateSignedTransaction<Call<Self>> + frame_system::Config {
 		/// Because this pallet emits events, it depends on the runtime's definition of an event.
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
@@ -218,19 +218,21 @@ pub mod pallet {
 		type Call = Call<T>;
 
 		fn validate_unsigned(source: TransactionSource, call: &Self::Call) -> TransactionValidity {
-			InvalidTransaction::Call.into()
+			let valid_tx = |provide| ValidTransaction::with_tag_prefix("bo_trading_crond")
+				// set priority to 2^18
+				.priority(1 << 18) // please define `UNSIGNED_TXS_PRIORITY` before this line
+				.and_provides([&provide])
+				.longevity(3)
+				.propagate(true)
+				.build();
 
-			// let valid_tx = |provide| ValidTransaction::with_tag_prefix("bo_trading_crond")
-			// 	.priority(2**10) // please define `UNSIGNED_TXS_PRIORITY` before this line
-			// 	.and_provides([&provide])
-			// 	.longevity(3)
-			// 	.propagate(true)
-			// 	.build();
-			//
-			// match call {
-			// 	Call::extrinsic1 { key: value } => valid_tx(b"extrinsic1".to_vec()),
-			// 	_ => InvalidTransaction::Call.into(),
-			// }
+			match call {
+				Call::close_order {
+					ref order_id,
+					ref close_price,
+				} => valid_tx(b"close_order".to_vec()),
+				_ => InvalidTransaction::Call.into(),
+			}
 		}
 	}
 
@@ -238,6 +240,7 @@ pub mod pallet {
 	impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
 		/// Offchain Worker entry point.
 		fn offchain_worker(block_number: T::BlockNumber) {
+			log::info!("BoTrading Offchain workers: block_number: {:?}", block_number);
 			let res = Self::scan_and_validate_expired_order_raw_unsigned(block_number);
 			if let Err(e) = res {
 				log::error!("Error: {}", e);
@@ -400,6 +403,8 @@ pub mod pallet {
 			// log::info!("Order created: {:?}.", order_id);
 			// Self::deposit_event(Event::OrderCreated(sender, order_id));
 
+			log::info!("close_order: order_id, close_price: {:?}, {:?}", order_id, close_price);
+
 			Ok(())
 		}
 	}
@@ -433,12 +438,19 @@ pub mod pallet {
 		/// - liquid it out by sending a transaction to on-chain
 		///
 		pub fn scan_and_validate_expired_order_raw_unsigned(block_number: T::BlockNumber) -> Result<(), &'static str> {
-			// Make an external HTTP request to fetch the current price.
-			// Note this call will block until response is received.
-			// let price = Self::fetch_price().map_err(|_| "Failed to fetch price")?;
-			// let call = Call::submit_price_unsigned { block_number, price }
-			// SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into())
-			// 	.map_err(|()| "Unable to submit unsigned transaction.")?;
+			log::info!("scan and validate order: block_number: {:?}", block_number);
+
+			// TODO: Call the Pallet SymbolPrice to get the most updated price
+			let close_price: BalanceOf<T> = Self::u64_to_balance(0).ok_or("Cannot fake price")?;
+
+			// Create a call
+			let call = Call::close_order {
+				order_id: T::Hashing::hash_of(&b"TODO...."),
+				close_price,
+			};
+			// submit the call to on-chain
+			SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into())
+				.map_err(|()| "Unable to submit unsigned transaction.")?;
 
 			Ok(())
 		}
