@@ -51,7 +51,7 @@ pub mod pallet {
 		type Currency: Currency<Self::AccountId>;
 
 		/// Loose coupling with BoLiquidity pallet
-		type BoLiquidity: BoLiquidityInterface<Self::Hash>;
+		type BoLiquidity: BoLiquidityInterface<Self::AccountId>;
 
 		/// Use for create random data
 		type MyRandomness: Randomness<Self::Hash, Self::BlockNumber>;
@@ -130,7 +130,7 @@ pub mod pallet {
 		pub volume_in_unit: BalanceOf<T>,
 		pub expired_at: u64,
 		pub created_at: u64,
-		pub liquidity_pool_id: T::Hash,
+		pub liquidity_pool_id: T::AccountId,
 		pub payout_rate: u32, // percent (1-100): the win rate of the LP at the open time
 		pub open_price: SymbolPrice,
 		pub close_price: Option<SymbolPrice>,

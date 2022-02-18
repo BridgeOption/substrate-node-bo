@@ -24,6 +24,7 @@ frame-system = { default-features = false, version = "4.0.0-dev", git = "https:/
 frame-benchmarking = { default-features = false, version = "4.0.0-dev", git = "https://github.com/paritytech/substrate.git", tag = "devhub/latest", optional = true }
 pallet-balances = { default-features = false, git = 'https://github.com/paritytech/substrate.git', tag = 'devhub/latest', version = '4.0.0-dev' }
 pallet-randomness-collective-flip = { default-features = false, git = 'https://github.com/paritytech/substrate.git', tag = 'devhub/latest', version = '4.0.0-dev' }
+sp-runtime = { default-features = false, version = "4.0.0-dev", git = "https://github.com/paritytech/substrate.git", tag = "devhub/latest" }
 
 [dev-dependencies]
 sp-core = { default-features = false, version = "4.0.0-dev", git = "https://github.com/paritytech/substrate.git", tag = "devhub/latest" }
@@ -40,6 +41,7 @@ std = [
 	"frame-benchmarking/std",
 	"pallet-balances/std",
 	"pallet-randomness-collective-flip/std",
+	"sp-runtime/std",
 ]
 
 runtime-benchmarks = ["frame-benchmarking/runtime-benchmarks"]

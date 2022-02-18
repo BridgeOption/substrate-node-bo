@@ -22,6 +22,7 @@ use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
+use frame_support::PalletId;
 
 // A few exports that help ease life for downstream crates.
 pub use frame_support::{
@@ -302,10 +303,16 @@ impl pallet_bo_trading::Config for Runtime {
 	type TimeProvider = Timestamp;
 }
 
+
+parameter_types! {
+	pub const BrightOptionId: PalletId = PalletId(*b"BrightOp");
+}
+
 impl pallet_bo_liquidity::Config for Runtime {
 	type Event = Event;
 	type Currency = Balances;
 	type MyRandomness = RandomnessCollectiveFlip;
+	type PalletId = BrightOptionId;
 }
 
 parameter_types! {
