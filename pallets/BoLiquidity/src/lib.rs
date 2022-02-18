@@ -211,6 +211,7 @@ pub mod pallet {
 			<LiquidityPools<T>>::insert(lp_id.clone(), liquidity_pool);
 			<LpCount<T>>::put(new_cnt);
 			<LiquidityPoolsOwned<T>>::append(sender.clone(), lp_id.clone());
+			
 			<LiquidityPoolsIndex<T>>::insert(&current_lp_idx, lp_id.clone());
 
 			let lp_rank = Self::get_lprank(amount);
@@ -276,7 +277,7 @@ pub mod pallet {
 			let lp_id = Self::pick_a_suitable_lp(volumn);
 			ensure!(lp_id.is_some(), <Error<T>>::NoLiquidityPool);
 
-			// log::info!("Random LP: {:?}.", lp_id.clone().unwrap());
+			log::info!("Random LP: {:?}.", lp_id.clone().unwrap());
 
 			Self::deposit_event(Event::LPGetRandom(sender, lp_id.clone().unwrap()));
 
@@ -390,8 +391,8 @@ pub mod pallet {
 	/// Expose for loosely coupling
 	/// for using in other pallet
 	///
-	pub trait BoLiquidityInterface<THashType> {
-		fn get_suitable_lp(volumn:u64) -> Option<THashType>;
+	pub trait BoLiquidityInterface<TAccountId> {
+		fn get_suitable_lp(volumn:u64) -> Option<TAccountId>;
 	}
 
 	// impl<T: Config> BoLiquidityInterface for Module<T> {

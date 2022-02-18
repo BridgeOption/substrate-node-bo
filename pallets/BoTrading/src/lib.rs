@@ -20,30 +20,32 @@ pub mod pallet {
 	// 	dispatch::DispatchResult,
 	// 	pallet_prelude::*,
 	// };
-	use frame_system::pallet_prelude::*;
 	use frame_support::{
 		dispatch::DispatchResult,
 		pallet_prelude::*,
 		sp_runtime::traits::Hash, // support T::Hashing
 		traits::{
+			Currency, ExistenceRequirement,
+			ExistenceRequirement::{AllowDeath, KeepAlive},
 			Randomness,
-			Currency,
 		},
 	};
-	use scale_info::TypeInfo;
-	// use scale_info::prelude::string::String; // support String
-	use scale_info::prelude::vec::Vec;	// support Vec
+	use frame_system::pallet_prelude::*;
+	use scale_info::prelude::string::String; // support String
+	use scale_info::prelude::vec::Vec;
+	use scale_info::TypeInfo; // support Vec
 
 	use frame_support::traits::UnixTime; // support Timestamp
 
 	#[cfg(feature = "std")]
 	use frame_support::serde::{Deserialize, Serialize};
-	use frame_system::offchain::SubmitTransaction;
+	use frame_system::offchain::{CreateSignedTransaction, SubmitTransaction};
 	use pallet_bo_liquidity::BoLiquidityInterface;
+	use pallet_symbol_price::SymbolPriceInterface;
 
 	/// Configure the pallet by specifying the parameters and types on which it depends.
 	#[pallet::config]
-	pub trait Config: frame_system::Config {
+	pub trait Config: CreateSignedTransaction<Call<Self>> + frame_system::Config {
 		/// Because this pallet emits events, it depends on the runtime's definition of an event.
 		type Event: From<Event<Self>> + IsType<<Self as frame_system::Config>::Event>;
 
@@ -53,31 +55,34 @@ pub mod pallet {
 		/// Loose coupling with BoLiquidity pallet
 		type BoLiquidity: BoLiquidityInterface<Self::AccountId>;
 
+		/// Loose coupling with SymbolPrice pallet
+		type SymbolPriceModule: SymbolPriceInterface;
+
 		/// Use for create random data
 		type MyRandomness: Randomness<Self::Hash, Self::BlockNumber>;
 
 		/// Use get current time
 		type TimeProvider: UnixTime;
-
-
 	}
 
 	#[pallet::pallet]
 	#[pallet::generate_store(pub(super) trait Store)]
 	pub struct Pallet<T>(_);
 
-
-
 	/*
 	Add Order info
 	 */
 	type AccountOf<T> = <T as frame_system::Config>::AccountId;
-	type BalanceOf<T> = <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+	type BalanceOf<T> =
+		<<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
 
 	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo)]
 	#[scale_info(skip_type_params(T))]
 	#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-	pub enum TradeType { Call, Put }
+	pub enum TradeType {
+		Call,
+		Put,
+	}
 
 	/// User will trade on these pair
 	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo)]
@@ -107,7 +112,6 @@ pub mod pallet {
 
 	pub type SymbolPrice = u128;
 
-
 	/// Struct for holding Order information.
 	#[derive(Clone, Encode, Decode, PartialEq, RuntimeDebug, TypeInfo)]
 	#[scale_info(skip_type_params(T))]
@@ -130,21 +134,16 @@ pub mod pallet {
 		pub volume_in_unit: BalanceOf<T>,
 		pub expired_at: u64,
 		pub created_at: u64,
-		pub liquidity_pool_id: T::AccountId,
+		pub liquidity_pool_id: AccountOf<T>,
 		pub payout_rate: u32, // percent (1-100): the win rate of the LP at the open time
 		pub open_price: SymbolPrice,
 		pub close_price: Option<SymbolPrice>,
 		pub status: OrderStatus,
 	}
 
-
 	/*
 	End Order info
 	 */
-
-
-
-
 
 	// The pallet's runtime storage items.
 	// https://docs.substrate.io/v3/runtime/storage
@@ -153,8 +152,6 @@ pub mod pallet {
 	// // Learn more about declaring storage items:
 	// // https://docs.substrate.io/v3/runtime/storage#declaring-storage-items
 	// pub type Something<T> = StorageValue<_, u32>;
-
-
 
 	#[pallet::storage]
 	#[pallet::getter(fn order_count)]
@@ -170,8 +167,8 @@ pub mod pallet {
 	/// Keeps track of what accounts own what Order
 	/// Ask: OptionQuery vs ValueQuery? What are there use cases?
 	/// Answer: https://stackoverflow.com/a/69114934/4984888
-	pub(super) type UserOrders<T: Config> = StorageMap<_, Twox64Concat, T::AccountId, Vec<T::Hash>, ValueQuery>;
-
+	pub(super) type UserOrders<T: Config> =
+		StorageMap<_, Twox64Concat, T::AccountId, Vec<T::Hash>, ValueQuery>;
 
 	// Pallets use events to inform users when important changes are made.
 	// https://docs.substrate.io/v3/runtime/events-and-errors
@@ -181,11 +178,11 @@ pub mod pallet {
 		// /// Event documentation should end with an array that provides descriptive names for event
 		// /// parameters. [something, who]
 		// SomethingStored(u32, T::AccountId),
-
-
 		/// The order was created
 		/// parameters. [sender, order_id]
 		OrderCreated(T::AccountId, T::Hash),
+
+		OrderClosed(T::AccountId, u128, OrderStatus, BalanceOf<T>),
 	}
 
 	// Errors inform users that something went wrong.
@@ -195,8 +192,6 @@ pub mod pallet {
 		// NoneValue,
 		// /// Errors should have helpful documentation associated with them.
 		// StorageOverflow,
-
-
 		/// ExpiredAt must be a specific point in the future, and if timeframe is 5 minute
 		InvalidExpiredAt,
 		/// trading vol must be min / max
@@ -211,29 +206,31 @@ pub mod pallet {
 		OrderCountOverflow,
 		/// error during inserting order_id into user orders's vector
 		CannotSaveUserOrders,
+		/// Order Not Exist
+		OrderNotExist,
 	}
-
-
-
 
 	#[pallet::validate_unsigned]
 	impl<T: Config> ValidateUnsigned for Pallet<T> {
 		type Call = Call<T>;
 
 		fn validate_unsigned(source: TransactionSource, call: &Self::Call) -> TransactionValidity {
-			InvalidTransaction::Call.into()
+			let valid_tx = |provide| {
+				ValidTransaction::with_tag_prefix("bo_trading_crond")
+					// set priority to 2^18
+					.priority(1 << 18) // please define `UNSIGNED_TXS_PRIORITY` before this line
+					.and_provides([&provide])
+					.longevity(3)
+					.propagate(true)
+					.build()
+			};
 
-			// let valid_tx = |provide| ValidTransaction::with_tag_prefix("bo_trading_crond")
-			// 	.priority(2**10) // please define `UNSIGNED_TXS_PRIORITY` before this line
-			// 	.and_provides([&provide])
-			// 	.longevity(3)
-			// 	.propagate(true)
-			// 	.build();
-			//
-			// match call {
-			// 	Call::extrinsic1 { key: value } => valid_tx(b"extrinsic1".to_vec()),
-			// 	_ => InvalidTransaction::Call.into(),
-			// }
+			match call {
+				Call::close_order { ref order_id, ref close_price } => {
+					valid_tx(b"close_order".to_vec())
+				},
+				_ => InvalidTransaction::Call.into(),
+			}
 		}
 	}
 
@@ -241,15 +238,13 @@ pub mod pallet {
 	impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
 		/// Offchain Worker entry point.
 		fn offchain_worker(block_number: T::BlockNumber) {
+			log::info!("BoTrading Offchain workers: block_number: {:?}", block_number);
 			let res = Self::scan_and_validate_expired_order_raw_unsigned(block_number);
 			if let Err(e) = res {
 				log::error!("Error: {}", e);
 			}
 		}
 	}
-
-
-
 
 	// Dispatchable functions allows users to interact with the pallet and invoke state changes.
 	// These functions materialize as "extrinsics", which are often compared to transactions.
@@ -295,7 +290,6 @@ pub mod pallet {
 		// 	}
 		// }
 
-
 		/// Create an order
 		///  - volume_in_unit: 2 decimal place, eg: 1000 mean 10.00
 		///  - expired_at: unix timestamp
@@ -314,9 +308,6 @@ pub mod pallet {
 			// https://docs.substrate.io/v3/runtime/origins
 			let sender = ensure_signed(origin)?;
 
-
-
-
 			// ----- validation ------
 			// TODO: Ask: how can I get decimal of currency, ie: 1 coin = 100...000 units
 			let CURRENCY_DECIMAL = 2;
@@ -324,8 +315,14 @@ pub mod pallet {
 			let MIN_TRADING_VOL = 1; // min trading vol is 1 token = (~$1)
 			let MAX_TRADING_VOL = 1000; // max trading vol is 1000 token (~$1000)
 
-			let min_vol_in_unit: BalanceOf<T> = Self::u64_to_balance(MIN_TRADING_VOL * 10_u64.pow(CURRENCY_DECIMAL)).ok_or(<Error<T>>::InvalidTradingVolume)?;
-			let max_vol_in_unit: BalanceOf<T> = Self::u64_to_balance(MAX_TRADING_VOL * 10_u64.pow(CURRENCY_DECIMAL)).ok_or(<Error<T>>::InvalidTradingVolume)?;
+			let PAYOUT_RATE = 95; // payout rate to user
+
+			let min_vol_in_unit: BalanceOf<T> =
+				Self::u64_to_balance(MIN_TRADING_VOL * 10_u64.pow(CURRENCY_DECIMAL))
+					.ok_or(<Error<T>>::InvalidTradingVolume)?;
+			let max_vol_in_unit: BalanceOf<T> =
+				Self::u64_to_balance(MAX_TRADING_VOL * 10_u64.pow(CURRENCY_DECIMAL))
+					.ok_or(<Error<T>>::InvalidTradingVolume)?;
 
 			ensure!(min_vol_in_unit.le(&volume_in_unit), <Error<T>>::InvalidTradingVolume);
 			ensure!(max_vol_in_unit.ge(&volume_in_unit), <Error<T>>::InvalidTradingVolume);
@@ -334,14 +331,14 @@ pub mod pallet {
 			ensure!(current_ts < expired_at, <Error<T>>::InvalidExpiredAt);
 
 			// Check the buyer has enough free balance to place this order
-			ensure!(T::Currency::free_balance(&sender) >= volume_in_unit, <Error<T>>::NotEnoughBalance);
-
-
-
+			ensure!(
+				T::Currency::free_balance(&sender) >= volume_in_unit,
+				<Error<T>>::NotEnoughBalance
+			);
 
 			// Performs this operation first as it may fail
-			let new_cnt: u64 = Self::order_count().checked_add(1).ok_or(<Error<T>>::OrderCountOverflow)?;
-
+			let new_cnt: u64 =
+				Self::order_count().checked_add(1).ok_or(<Error<T>>::OrderCountOverflow)?;
 
 			// TODO: Ensure: Allow a specific currency only!
 
@@ -349,6 +346,9 @@ pub mod pallet {
 			let volumn = Self::balance_to_u64(volume_in_unit).unwrap();
 			let suitable_lp_id = T::BoLiquidity::get_suitable_lp(volumn);
 			ensure!(suitable_lp_id.is_some(), <Error<T>>::NoLiquidityPool);
+
+			let open_price =
+				(T::SymbolPriceModule::get_price(String::from("BTC_USDT").into_bytes())).unwrap();
 
 			// create orders
 			let mut order = Order::<T> {
@@ -360,8 +360,8 @@ pub mod pallet {
 				expired_at,
 				created_at: current_ts,
 				liquidity_pool_id: suitable_lp_id.unwrap(), // unwrap is safe because of `ensure` check above
-				payout_rate: 0, // TODO: fix 95% or must get this from liquidity pool info
-				open_price: 0, // TODO: Get open price from SymbolPrice pallet
+				payout_rate: PAYOUT_RATE,                   // fix 95% or must get this from liquidity pool info
+				open_price,
 				close_price: None,
 				status: OrderStatus::Created,
 			};
@@ -371,7 +371,6 @@ pub mod pallet {
 			let order_id = T::Hashing::hash_of(&order);
 			order.id = order_id;
 
-
 			// ---- Save to db ------
 			// Performs this operation first because as it may fail
 			// <UserOrders<T>>::try_mutate(&sender, |vec| {
@@ -379,10 +378,16 @@ pub mod pallet {
 			// 	Ok(())
 			// }).map_err(|_| <Error<T>>::CannotSaveUserOrders)?;
 			<UserOrders<T>>::append(sender.clone(), order_id);
-			<Orders<T>>::insert(order_id, order);
+			<Orders<T>>::insert(order_id, order.clone());
 			<OrderCount<T>>::put(new_cnt);
 
-
+			// Deposit balance user
+			T::Currency::transfer(
+				&sender.clone(),
+				&order.liquidity_pool_id,
+				volume_in_unit,
+				ExistenceRequirement::AllowDeath,
+			)?;
 
 			log::info!("Order created: {:?}.", order_id);
 			Self::deposit_event(Event::OrderCreated(sender, order_id));
@@ -393,21 +398,73 @@ pub mod pallet {
 		/// Validate, finish this order
 		/// - Determine this is win or loose
 		/// - So dome money transfer logic
-		///
 		#[pallet::weight(1_000 + T::DbWeight::get().writes(1))]
 		pub fn close_order(
 			origin: OriginFor<T>,
 			order_id: T::Hash,
-			close_price: BalanceOf<T>,
+			close_price: SymbolPrice,
 		) -> DispatchResult {
-			// let sender = ensure_signed(origin)?;
-			// log::info!("Order created: {:?}.", order_id);
-			// Self::deposit_event(Event::OrderCreated(sender, order_id));
+			let CURRENCY_DECIMAL = 2;
+			// Get Order
+			let order = Orders::<T>::get(&order_id);
+			let mut status = OrderStatus::Lose;
+			match order {
+				Some(ref order) => {
+					// Check result
+					match order.trade_type {
+						TradeType::Call => {
+							if order.open_price < close_price {
+								status = OrderStatus::Win;
+							}
+						},
+						TradeType::Put => {
+							if order.open_price > close_price {
+								status = OrderStatus::Win;
+							}
+						},
+					}
+				},
+				None => Err(Error::<T>::OrderNotExist)?,
+			}
+
+			// Set status
+			let mut order = order.clone().unwrap();
+			order.status = status.clone();
+			order.close_price = Some(close_price);
+
+			let mut volumn_payout = 0;
+
+			match status {
+				OrderStatus::Win => {
+					volumn_payout = Self::balance_to_u64(order.volume_in_unit).unwrap()
+						* u64::from(order.payout_rate);
+					// Payout
+					T::Currency::transfer(
+						&order.liquidity_pool_id,
+						&order.user_id,
+						Self::u64_to_balance(volumn_payout * 10_u64.pow(CURRENCY_DECIMAL))
+							.ok_or(<Error<T>>::InvalidTradingVolume)?,
+						ExistenceRequirement::AllowDeath,
+					)?;
+				},
+				_ => (),
+			}
+
+			let sender = ensure_signed(origin)?;
+			log::info!("close_order: order_id, close_price: {:?}, {:?}", order_id, close_price);
+			Self::deposit_event(Event::OrderClosed(
+				sender,
+				close_price,
+				status,
+				Self::u64_to_balance(volumn_payout * 10_u64.pow(CURRENCY_DECIMAL))
+					.ok_or(<Error<T>>::InvalidTradingVolume)?,
+			));
+
+			// TODO: Remove order in Orders -> push to OrderCompleted
 
 			Ok(())
 		}
 	}
-
 
 	// pub const RAW_AMOUNT_SCALE: f64 = 100 as f64;
 
@@ -420,7 +477,6 @@ pub mod pallet {
 		// pub fn amount_2_raw_amount(amount: f64) -> u32 {
 		// 	amount * RAW_AMOUNT_SCALE
 		// }
-
 
 		pub fn hash_str<S: Encode>(s: &S) -> T::Hash {
 			T::Hashing::hash_of(s)
@@ -435,18 +491,33 @@ pub mod pallet {
 			TryInto::<u64>::try_into(input).ok()
 		}
 
-
 		/// This is crond entry point:
 		///	- scan for expired tx from on-chain data
 		/// - liquid it out by sending a transaction to on-chain
 		///
-		pub fn scan_and_validate_expired_order_raw_unsigned(block_number: T::BlockNumber) -> Result<(), &'static str> {
-			// Make an external HTTP request to fetch the current price.
-			// Note this call will block until response is received.
-			// let price = Self::fetch_price().map_err(|_| "Failed to fetch price")?;
-			// let call = Call::submit_price_unsigned { block_number, price }
-			// SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into())
-			// 	.map_err(|()| "Unable to submit unsigned transaction.")?;
+		pub fn scan_and_validate_expired_order_raw_unsigned(
+			block_number: T::BlockNumber,
+		) -> Result<(), &'static str> {
+			// Get current timestamp
+			let current_ts = T::TimeProvider::now().as_secs();
+			log::info!("scan and validate order: block_number: {:?}", block_number);
+
+			// Scan all Orders
+			for order in Orders::<T>::iter_values() {
+				// Check order expired and call close_order
+				if current_ts >= order.expired_at {
+					let close_price =
+						T::SymbolPriceModule::get_price(String::from("BTC_USDT").into_bytes())
+							.unwrap();
+
+					// Create a call close_order
+					let call = Call::close_order { order_id: order.id, close_price };
+
+					// submit the call to on-chain
+					SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into())
+						.map_err(|()| "Unable to submit unsigned transaction.")?;
+				}
+			}
 
 			Ok(())
 		}
