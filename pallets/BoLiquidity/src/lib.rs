@@ -230,8 +230,8 @@ pub mod pallet {
 		pub fn deposit_lp(origin: OriginFor<T>, lp_id: T::AccountId, amount: BalanceOf<T>) -> DispatchResult {
 			let sender = ensure_signed(origin)?;
 
-			let min_amount: BalanceOf<T> = Self::u64_to_balance(10000).ok_or(<Error<T>>::InvalidAmount)?;
-			ensure!(amount.ge(&min_amount), <Error<T>>::InvalidAmount);
+			// let min_amount: BalanceOf<T> = Self::u64_to_balance(10000).ok_or(<Error<T>>::InvalidAmount)?;
+			// ensure!(amount.ge(&min_amount), <Error<T>>::InvalidAmount);
 
 			LiquidityPools::<T>::try_mutate_exists(&lp_id, |liquidity_pool| -> DispatchResult {
 				let mut lp = liquidity_pool.as_mut().ok_or(Error::<T>::NoLiquidityPool)?;
