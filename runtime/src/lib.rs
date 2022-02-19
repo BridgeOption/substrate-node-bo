@@ -302,6 +302,7 @@ impl pallet_bo_trading::Config for Runtime {
 	type SymbolPriceModule = SymbolPriceModule;
 	type MyRandomness = RandomnessCollectiveFlip;
 	type TimeProvider = Timestamp;
+	type UnsignedInterval = ConstU32<0>;
 }
 
 

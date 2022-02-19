@@ -23,9 +23,9 @@ pub mod pallet {
 	use frame_support::{
 		dispatch::DispatchResult,
 		pallet_prelude::*,
+		sp_runtime::traits::AtLeast32BitUnsigned,
 		sp_runtime::traits::Hash, // support T::Hashing
 		sp_runtime::SaturatedConversion,
-		sp_runtime::traits::AtLeast32BitUnsigned,
 		traits::{
 			Currency, ExistenceRequirement,
 			ExistenceRequirement::{AllowDeath, KeepAlive},
@@ -33,10 +33,10 @@ pub mod pallet {
 		},
 	};
 	use frame_system::pallet_prelude::*;
+	use scale_info::prelude::ops::Add;
 	use scale_info::prelude::string::String; // support String
 	use scale_info::prelude::vec::Vec;
 	use scale_info::TypeInfo; // support Vec
-	use scale_info::prelude::ops::Add;
 
 	use frame_support::traits::UnixTime; // support Timestamp
 
@@ -66,6 +66,13 @@ pub mod pallet {
 
 		/// Use get current time
 		type TimeProvider: UnixTime;
+
+		/// Number of blocks of cooldown after unsigned transaction is included.
+		///
+		/// This ensures that we only accept unsigned transactions once, every `UnsignedInterval`
+		/// blocks.
+		#[pallet::constant]
+		type UnsignedInterval: Get<Self::BlockNumber>;
 	}
 
 	#[pallet::pallet]
@@ -173,6 +180,16 @@ pub mod pallet {
 	pub(super) type UserOrders<T: Config> =
 		StorageMap<_, Twox64Concat, T::AccountId, Vec<T::Hash>, ValueQuery>;
 
+
+	/// Defines the block when next unsigned transaction will be accepted.
+	///
+	/// To prevent spam of unsigned (and unpayed!) transactions on the network,
+	/// we only allow one transaction every `T::UnsignedInterval` blocks.
+	/// This storage entry defines when new transaction is going to be accepted.
+	#[pallet::storage]
+	#[pallet::getter(fn next_unsigned_at)]
+	pub(super) type NextUnsignedAt<T: Config> = StorageValue<_, T::BlockNumber, ValueQuery>;
+
 	// Pallets use events to inform users when important changes are made.
 	// https://docs.substrate.io/v3/runtime/events-and-errors
 	#[pallet::event]
@@ -187,9 +204,10 @@ pub mod pallet {
 
 		OrderClosed {
 			account_id: T::AccountId,
+			order_id: T::Hash,
 			close_price: u128,
 			status: OrderStatus,
-			amout_payout: BalanceOf<T>,
+			amount_payout: BalanceOf<T>,
 		},
 	}
 
@@ -224,18 +242,20 @@ pub mod pallet {
 
 		fn validate_unsigned(source: TransactionSource, call: &Self::Call) -> TransactionValidity {
 			let valid_tx = |provide| {
-				let current_block_number =<frame_system::Pallet<T>>::block_number();
+				// Now let's check if the transaction has any chance to succeed.
+				let next_unsigned_at = <NextUnsignedAt<T>>::get();
+				let current_block_number = <frame_system::Pallet<T>>::block_number();
 				ValidTransaction::with_tag_prefix("bo_trading_crond")
 					// set priority to 2^18
 					.priority(1 << 18 + Self::blocknumber_to_u64(current_block_number).unwrap()) // please define `UNSIGNED_TXS_PRIORITY` before this line
 					.and_provides([&provide])
-					.longevity(3)
+					.longevity(5)
 					.propagate(true)
 					.build()
 			};
 
 			match call {
-				Call::close_order { ref order_id, ref close_price } => {
+				Call::close_order { block_number: current_block_number, ref order_id, ref close_price } => {
 					valid_tx(b"close_order".to_vec())
 				},
 				_ => InvalidTransaction::Call.into(),
@@ -319,7 +339,7 @@ pub mod pallet {
 
 			// ----- validation ------
 			// TODO: Ask: how can I get decimal of currency, ie: 1 coin = 100...000 units
-			let CURRENCY_DECIMAL = 2;
+			let CURRENCY_DECIMAL = 12;
 			// TODO: Get this setting from LiquidityPool setting
 			let MIN_TRADING_VOL = 1; // min trading vol is 1 token = (~$1)
 			let MAX_TRADING_VOL = 1000; // max trading vol is 1000 token (~$1000)
@@ -333,10 +353,14 @@ pub mod pallet {
 				Self::u64_to_balance(MAX_TRADING_VOL * 10_u64.pow(CURRENCY_DECIMAL))
 					.ok_or(<Error<T>>::InvalidTradingVolume)?;
 
+			log::info!("min_vol is {:?} and max_vol is {:?}.", min_vol_in_unit, max_vol_in_unit);
+
 			ensure!(min_vol_in_unit.le(&volume_in_unit), <Error<T>>::InvalidTradingVolume);
 			ensure!(max_vol_in_unit.ge(&volume_in_unit), <Error<T>>::InvalidTradingVolume);
 
 			let current_ts: u64 = T::TimeProvider::now().as_secs(); // TODO: Get current timestamp
+			log::info!("Order is creating at {:?} and expired at {:?}.", current_ts, expired_at);
+
 			ensure!(current_ts < expired_at, <Error<T>>::InvalidExpiredAt);
 
 			// Check the buyer has enough free balance to place this order
@@ -395,7 +419,7 @@ pub mod pallet {
 				&sender.clone(),
 				&order.liquidity_pool_id,
 				volume_in_unit,
-				ExistenceRequirement::AllowDeath,
+				ExistenceRequirement::KeepAlive,
 			)?;
 
 			// Update LP balance
@@ -413,10 +437,11 @@ pub mod pallet {
 		#[pallet::weight(1_000 + T::DbWeight::get().writes(1))]
 		pub fn close_order(
 			origin: OriginFor<T>,
+			block_number: T::BlockNumber,
 			order_id: T::Hash,
 			close_price: SymbolPrice,
 		) -> DispatchResult {
-			let CURRENCY_DECIMAL = 2;
+			let CURRENCY_DECIMAL = 12;
 			// Get Order
 			let order = Orders::<T>::get(&order_id);
 			let mut status = OrderStatus::Lose;
@@ -444,7 +469,7 @@ pub mod pallet {
 			order.status = status.clone();
 			order.close_price = Some(close_price);
 
-			let mut volumn_payout = 0;
+			let mut volumn_payout: BalanceOf<T> = Self::u64_to_balance(0).unwrap();
 
 			// Update info Orders
 			Orders::<T>::try_mutate_exists(&order_id, |order| -> DispatchResult {
@@ -456,33 +481,60 @@ pub mod pallet {
 
 			match status {
 				OrderStatus::Win => {
-					volumn_payout = Self::balance_to_u64(order.volume_in_unit).unwrap()
-						* u64::from(order.payout_rate);
+					volumn_payout = (order.volume_in_unit
+						* Self::u64_to_balance(u64::from(100 + order.payout_rate)).unwrap())
+						/ Self::u64_to_balance(100).unwrap();
+
+					log::info!("volumn_payout: {:?}", volumn_payout);
 					// Payout
 					T::Currency::transfer(
 						&order.liquidity_pool_id,
 						&order.user_id,
-						Self::u64_to_balance(volumn_payout * 10_u64.pow(CURRENCY_DECIMAL))
-							.ok_or(<Error<T>>::InvalidTradingVolume)?,
+						volumn_payout,
 						ExistenceRequirement::KeepAlive,
 					)?;
 
 					// Update LP balance
 					T::BoLiquidity::update_lp_balance(order.liquidity_pool_id);
 				},
-				_ => log::info!("Lose: order_id, close_price: {:?}, {:?}", order_id, close_price),
+				_ => {
+					log::info!("Lose: order_id, close_price: {:?}, {:?}", order_id, close_price);
+					},
+
 			}
 
+			/*
 			let sender = ensure_signed(origin)?;
 			log::info!("close_order: order_id, close_price: {:?}, {:?}", order_id, close_price);
 			Self::deposit_event(Event::OrderClosed {
 				account_id: sender,
+				order_id,
 				close_price,
 				status,
-				amout_payout: Self::u64_to_balance(volumn_payout * 10_u64.pow(CURRENCY_DECIMAL))
-					.ok_or(<Error<T>>::InvalidTradingVolume)?,
+				amount_payout: volumn_payout,
+			});
+			*/
+
+			log::info!("close_order: order_id, close_price: {:?}, {:?}", order_id, close_price);
+			Self::deposit_event(Event::OrderClosed {
+				account_id: order.clone().user_id,
+				order_id,
+				close_price,
+				status,
+				amount_payout: volumn_payout,
 			});
 
+			<NextUnsignedAt<T>>::put(block_number + T::UnsignedInterval::get());
+
+			// Update info Orders
+			// Orders::<T>::try_mutate_exists(&order_id, |order| -> DispatchResult {
+			// 	let mut order = order.as_mut().ok_or(Error::<T>::OrderNotExist)?;
+			// 	Ok(())
+			// })?;
+			// Orders::<T>::try_mutate_exists(&order_id, |_| -> DispatchResult {
+			// 	let _order = order;
+			// 	Ok(())
+			// })?;
 
 			// TODO: Remove order in Orders -> push to OrderCompleted
 
@@ -515,7 +567,7 @@ pub mod pallet {
 			TryInto::<u64>::try_into(input).ok()
 		}
 
-		// How to convert BlockNumber <=> u64 : 
+		// How to convert BlockNumber <=> u64 :
 		pub fn blocknumber_to_u64(input: T::BlockNumber) -> Option<u64> {
 			TryInto::<u64>::try_into(input).ok()
 		}
@@ -541,7 +593,7 @@ pub mod pallet {
 
 					log::info!("Call close_order in block_number: {:?}", block_number);
 					// Create a call close_order
-					let call = Call::close_order { order_id: order.id, close_price };
+					let call = Call::close_order { block_number, order_id: order.id, close_price };
 
 					// submit the call to on-chain
 					SubmitTransaction::<T, Call<T>>::submit_unsigned_transaction(call.into())
