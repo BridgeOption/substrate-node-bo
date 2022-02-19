@@ -403,7 +403,7 @@ construct_runtime!(
 		Sudo: pallet_sudo,
 		// Include the custom logic from the pallet-template in the runtime.
 		TemplateModule: pallet_template,
-		BoTradingModule: pallet_bo_trading,
+		BoTradingModule: pallet_bo_trading::{Pallet, Call, Storage, Event<T>, ValidateUnsigned},
 		BoLiquidityModule: pallet_bo_liquidity,
 		SymbolPriceModule: pallet_symbol_price,
 	}

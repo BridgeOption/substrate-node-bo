@@ -784,7 +784,7 @@ pub mod pallet {
 				let mut ema = prices[0];
 				for i in 1..(prices.len() - 1) {
 					ema = ((prices[i] - ema) as f32 * SMOOTHING) as u32 + ema;
-					log::info!("--> for loop: ema, i: {:?} {:?} {:?}", ema, i, prices[i]);
+					// log::info!("--> for loop: ema, i: {:?} {:?} {:?}", ema, i, prices[i]);
 				}
 		
 				log::info!("ema: {:?}", ema);

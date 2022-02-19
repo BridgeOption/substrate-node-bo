@@ -443,6 +443,14 @@ pub mod pallet {
 
 			let mut volumn_payout = 0;
 
+			// Update info Orders
+			Orders::<T>::try_mutate_exists(&order_id, |order| -> DispatchResult {
+				let mut order = order.as_mut().ok_or(Error::<T>::OrderNotExist)?;
+				order.status =  status.clone();
+				order.close_price = Some(close_price);
+				Ok(())
+			})?;
+
 			match status {
 				OrderStatus::Win => {
 					volumn_payout = Self::balance_to_u64(order.volume_in_unit).unwrap()
@@ -469,11 +477,6 @@ pub mod pallet {
 					.ok_or(<Error<T>>::InvalidTradingVolume)?,
 			});
 
-			// Update info Orders
-			Orders::<T>::try_mutate_exists(&order_id, |order| -> DispatchResult {
-				let mut order = order.as_mut().ok_or(Error::<T>::OrderNotExist)?;
-				Ok(())
-			})?;
 
 			// TODO: Remove order in Orders -> push to OrderCompleted
 
