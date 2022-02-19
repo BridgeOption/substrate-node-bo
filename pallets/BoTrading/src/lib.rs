@@ -180,7 +180,6 @@ pub mod pallet {
 	pub(super) type UserOrders<T: Config> =
 		StorageMap<_, Twox64Concat, T::AccountId, Vec<T::Hash>, ValueQuery>;
 
-
 	/// Defines the block when next unsigned transaction will be accepted.
 	///
 	/// To prevent spam of unsigned (and unpayed!) transactions on the network,
@@ -255,9 +254,11 @@ pub mod pallet {
 			};
 
 			match call {
-				Call::close_order { block_number: current_block_number, ref order_id, ref close_price } => {
-					valid_tx(b"close_order".to_vec())
-				},
+				Call::close_order {
+					block_number: current_block_number,
+					ref order_id,
+					ref close_price,
+				} => valid_tx(b"close_order".to_vec()),
 				_ => InvalidTransaction::Call.into(),
 			}
 		}
@@ -453,14 +454,14 @@ pub mod pallet {
 							if order.open_price < close_price {
 								status = OrderStatus::Win;
 							}
-						},
+						}
 						TradeType::Put => {
 							if order.open_price > close_price {
 								status = OrderStatus::Win;
 							}
-						},
+						}
 					}
-				},
+				}
 				None => Err(Error::<T>::OrderNotExist)?,
 			}
 
@@ -474,7 +475,7 @@ pub mod pallet {
 			// Update info Orders
 			Orders::<T>::try_mutate_exists(&order_id, |order| -> DispatchResult {
 				let mut order = order.as_mut().ok_or(Error::<T>::OrderNotExist)?;
-				order.status =  status.clone();
+				order.status = status.clone();
 				order.close_price = Some(close_price);
 				Ok(())
 			})?;
@@ -496,11 +497,10 @@ pub mod pallet {
 
 					// Update LP balance
 					T::BoLiquidity::update_lp_balance(order.liquidity_pool_id);
-				},
+				}
 				_ => {
 					log::info!("Lose: order_id, close_price: {:?}, {:?}", order_id, close_price);
-					},
-
+				}
 			}
 
 			/*
@@ -517,7 +517,7 @@ pub mod pallet {
 
 			log::info!("close_order: order_id, close_price: {:?}, {:?}", order_id, close_price);
 			Self::deposit_event(Event::OrderClosed {
-				account_id: order.clone().user_id,
+				account_id: order.user_id,
 				order_id,
 				close_price,
 				status,
@@ -584,7 +584,7 @@ pub mod pallet {
 			log::info!("scan and validate order: block_number: {:?}", block_number);
 
 			// Scan all Orders
-			for order in Orders::<T>::iter_values() {
+			for order in Orders::<T>::iter_values().filter(|s| s.status == OrderStatus::Created) {
 				// Check order expired and call close_order
 				if current_ts >= order.expired_at {
 					let close_price =
