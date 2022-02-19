@@ -188,10 +188,13 @@ pub mod pallet {
 			// let pallet_account_id = Self::account_id();
 			let lp_id = Self::sub_account_id(current_lp_idx);
 
+			let balance = T::Currency::free_balance(&lp_id);
+			let final_amount = balance + amount;
+
 			let mut liquidity_pool = LiquidityPool::<T> {
 				id: lp_id.clone(),
 				name: name,
-				amount: amount,
+				amount: final_amount,
 				payout_rate: payout_rate,
 				admin: sender.clone(),
 			};
@@ -230,12 +233,12 @@ pub mod pallet {
 			let min_amount: BalanceOf<T> = Self::u64_to_balance(10000).ok_or(<Error<T>>::InvalidAmount)?;
 			ensure!(amount.ge(&min_amount), <Error<T>>::InvalidAmount);
 
-			// Check the buyer has enough free balance to create this lp
-			ensure!(T::Currency::free_balance(&sender) >= amount, <Error<T>>::NotEnoughBalance);
-
 			LiquidityPools::<T>::try_mutate_exists(&lp_id, |liquidity_pool| -> DispatchResult {
 				let mut lp = liquidity_pool.as_mut().ok_or(Error::<T>::NoLiquidityPool)?;
-				lp.amount = lp.amount + amount;
+				
+				let balance = T::Currency::free_balance(&lp_id);
+				let final_amount = balance + amount;
+				lp.amount = final_amount;
 
 				// amount need larger than ExistentialDeposit const define in Runtime
 				T::Currency::transfer(&sender, &lp_id, amount, ExistenceRequirement::KeepAlive)?;
@@ -385,6 +388,17 @@ pub mod pallet {
 			// And improve the picking speed
 			Self::get_next_lp_id()
 		}
+
+		fn update_lp_balance(lp_id: T::AccountId) -> Option<T::AccountId> {
+			LiquidityPools::<T>::try_mutate_exists(&lp_id, |liquidity_pool| -> DispatchResult {
+				let mut lp = liquidity_pool.as_mut().ok_or(Error::<T>::NoLiquidityPool)?;
+				let balance = T::Currency::free_balance(&lp_id);
+				lp.amount = balance;
+				Ok(())
+			}).ok()?;
+
+			Some(lp_id)
+		}
 	}
 
 	///
@@ -393,6 +407,7 @@ pub mod pallet {
 	///
 	pub trait BoLiquidityInterface<TAccountId> {
 		fn get_suitable_lp(volumn:u64) -> Option<TAccountId>;
+		fn update_lp_balance(lp_id:TAccountId) -> Option<TAccountId>;
 	}
 
 	// impl<T: Config> BoLiquidityInterface for Module<T> {
@@ -400,6 +415,10 @@ pub mod pallet {
 		// use Pallet<T> instead of Module<T> to support calling in other impl of Pallet?
 		fn get_suitable_lp(volumn:u64) -> Option<T::AccountId> {
 			Self::pick_a_suitable_lp(volumn)
+		}
+
+		fn update_lp_balance(lp_id: T::AccountId) -> Option<T::AccountId> {
+			Self::update_lp_balance(lp_id)
 		}
 	}
 	// End loosely coupling

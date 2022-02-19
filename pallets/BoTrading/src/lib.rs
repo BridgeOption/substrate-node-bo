@@ -398,6 +398,9 @@ pub mod pallet {
 				ExistenceRequirement::AllowDeath,
 			)?;
 
+			// Update LP balance
+			T::BoLiquidity::update_lp_balance(order.liquidity_pool_id);
+
 			log::info!("Order created: {:?}.", order_id);
 			Self::deposit_event(Event::OrderCreated(sender, order_id));
 
@@ -463,6 +466,9 @@ pub mod pallet {
 							.ok_or(<Error<T>>::InvalidTradingVolume)?,
 						ExistenceRequirement::KeepAlive,
 					)?;
+
+					// Update LP balance
+					T::BoLiquidity::update_lp_balance(order.liquidity_pool_id);
 				},
 				_ => log::info!("Lose: order_id, close_price: {:?}, {:?}", order_id, close_price),
 			}
